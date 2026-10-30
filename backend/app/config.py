@@ -23,7 +23,7 @@ class EmbeddingConfig(TypedDict):
 DEFAULT_GENERATION_CONFIG: GenerationParams = {
     # Minimum (Haiku) is 4096
     # Ref: https://docs.anthropic.com/en/docs/about-claude/models/all-models#model-comparison
-    "max_tokens": 8192,  # Batterypool patch: was 4096
+    "max_tokens": 32768,  # Batterypool patch: was 4096
     "top_k": 250,
     "top_p": 0.999,
     "temperature": 1.0,
@@ -43,7 +43,7 @@ DEFAULT_MISTRAL_GENERATION_CONFIG: GenerationParams = {
 
 # Ref: https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-deepseek.html
 DEFAULT_DEEP_SEEK_GENERATION_CONFIG: GenerationParams = {
-    "max_tokens": 8192,
+    "max_tokens": 16384,
     "top_p": 0.9,
     "temperature": 1.0,
     "stop_sequences": [],

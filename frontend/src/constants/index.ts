@@ -31,7 +31,7 @@ export const EDGE_GENERATION_PARAMS = {
 };
 
 export const DEFAULT_GENERATION_CONFIG: GenerationParams = {
-  maxTokens: 8192,
+  maxTokens: 32768,
   topK: 128,
   topP: 0.999,
   temperature: 0.6,
