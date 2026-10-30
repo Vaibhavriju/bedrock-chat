@@ -1128,6 +1128,9 @@ def _prepare_nova_model_params(
             },
         }
 
+    # Batterypool patch: Amazon Nova (v1) allows only about 5K output tokens, so keep the old 4096 cap.
+    inference_config["maxTokens"] = min(inference_config["maxTokens"], 4096)
+
     return converse_config
 
 

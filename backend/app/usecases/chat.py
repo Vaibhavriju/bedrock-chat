@@ -166,6 +166,19 @@ def prepare_conversation(
             message_id = str(ULID())
 
         conversation.message_map[message_id] = new_message
+        if parent_id not in conversation.message_map:
+            # Batterypool patch: after a failed reply the browser can send a placeholder parent id
+            # such as "new-message-assistant". Attach to the last stored message instead of failing.
+            fallback_id = conversation.last_message_id
+            if not fallback_id or fallback_id not in conversation.message_map:
+                fallback_id = (
+                    "instruction" if "instruction" in conversation.message_map else "system"
+                )
+            logger.warning(
+                f"Unknown parent message id '{parent_id}'; using '{fallback_id}' instead."
+            )
+            parent_id = fallback_id
+            new_message.parent = parent_id
         conversation.message_map[parent_id].children.append(message_id)  # type: ignore
 
     # If the "Generate continue" button is pressed, a new_message is not generated.
