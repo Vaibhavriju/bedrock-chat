@@ -262,6 +262,22 @@ const useModel = (botId?: string | null, activeModels?: ActiveModels) => {
         supportMediaType: LLAMA_SUPPORTED_MEDIA_TYPES,
         supportReasoning: false,
       },
+      // Moonshot AI / DeepSeek (Batterypool patch)
+      {
+        modelId: 'kimi-k3',
+        label: t('model.kimi-k3.label'),
+        description: t('model.kimi-k3.description'),
+        supportMediaType: [],
+        supportReasoning: true,
+        forceReasoningEnabled: true, // Kimi K3 always returns reasoning contents.
+      },
+      {
+        modelId: 'deepseek-v3.2',
+        label: t('model.deepseek-v3.2.label'),
+        description: t('model.deepseek-v3.2.description'),
+        supportMediaType: [],
+        supportReasoning: false,
+      },
       // OpenAI GPT-OSS models
       {
         modelId: 'gpt-oss-20b',

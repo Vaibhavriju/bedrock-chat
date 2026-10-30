@@ -43,7 +43,7 @@ DEFAULT_MISTRAL_GENERATION_CONFIG: GenerationParams = {
 
 # Ref: https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-deepseek.html
 DEFAULT_DEEP_SEEK_GENERATION_CONFIG: GenerationParams = {
-    "max_tokens": 4096,
+    "max_tokens": 8192,
     "top_p": 0.9,
     "temperature": 1.0,
     "stop_sequences": [],
@@ -386,6 +386,9 @@ BEDROCK_PRICING = {
         # OpenAI GPT-OSS models
         "gpt-oss-20b": {"input": 0.00015, "output": 0.00030},
         "gpt-oss-120b": {"input": 0.00030, "output": 0.00060},
+        # Added by Batterypool patch (USD per 1K tokens; verify on the AWS pricing page)
+        "kimi-k3": {"input": 0.0030, "output": 0.0150},
+        "deepseek-v3.2": {"input": 0.00062, "output": 0.00185},
     },
     # EU regions (eu-central-1, eu-west-1, eu-west-3)
     "eu-central-1": {

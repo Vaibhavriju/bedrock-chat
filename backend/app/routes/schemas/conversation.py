@@ -44,6 +44,8 @@ type_model_name = Literal[
     "gpt-6-sol",
     "gpt-6-luna",
     "gpt-6-astra",
+    "kimi-k3",
+    "deepseek-v3.2",
 ]
 
 

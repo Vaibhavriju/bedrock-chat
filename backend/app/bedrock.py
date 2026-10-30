@@ -89,6 +89,9 @@ BASE_MODEL_IDS = {
     # OpenAI GPT-OSS models
     "gpt-oss-20b": "openai.gpt-oss-20b-1:0",
     "gpt-oss-120b": "openai.gpt-oss-120b-1:0",
+    # Added by Batterypool patch
+    "kimi-k3": "moonshotai.kimi-k3",
+    "deepseek-v3.2": "deepseek.v3.2",
     # OpenAI GPT-6 models (inference profile only)
     "gpt-6-sol": "openai.gpt-6-sol",
     "gpt-6-luna": "openai.gpt-6-luna",
@@ -97,6 +100,9 @@ BASE_MODEL_IDS = {
 
 # Global inference profiles
 GLOBAL_INFERENCE_PROFILES = {
+    "kimi-k3": {
+        "supported_regions": ["us-east-1", "us-east-2", "us-west-2"],
+    },
     "claude-v4.5-opus": {
         "supported_regions": [
             "us-west-2",
@@ -364,6 +370,13 @@ GLOBAL_INFERENCE_PROFILES = {
 
 # Regional inference profiles
 REGIONAL_INFERENCE_PROFILES = {
+    "kimi-k3": {
+        "supported_regions": {
+            "us-east-1": "us",
+            "us-east-2": "us",
+            "us-west-2": "us",
+        }
+    },
     "claude-v4-opus": {
         "supported_regions": {"us-east-1": "us", "us-east-2": "us", "us-west-2": "us"}
     },
@@ -703,6 +716,11 @@ def is_gpt_oss_model(model: type_model_name) -> bool:
     return "gpt-oss" in model
 
 
+def is_kimi_model(model: type_model_name) -> bool:
+    """Check if the model is a Moonshot AI Kimi model"""
+    return "kimi" in model
+
+
 def is_openai_gpt_model(model: type_model_name) -> bool:
     """Check if the model is an OpenAI GPT model (GPT-OSS or GPT-6)"""
     return model.startswith("gpt-")
@@ -713,6 +731,8 @@ def is_tooluse_supported(model: type_model_name) -> bool:
     return model not in [
         "deepseek-r1",
         "llama3-2-1b-instruct",
+        "kimi-k3",
+        "deepseek-v3.2",
         "llama3-2-3b-instruct",
         "",
     ]
@@ -840,11 +860,16 @@ def is_multiple_system_prompt_content_supported(model: type_model_name):
         or is_llama_model(model)
         or is_mistral(model)
         or is_gpt_oss_model(model)
+        or is_kimi_model(model)
     )
 
 
 def is_unsigned_reasoning_content_supported(model: type_model_name):
-    return not (is_deepseek_model(model) or is_gpt_oss_model(model))
+    return not (
+        is_deepseek_model(model)
+        or is_gpt_oss_model(model)
+        or is_kimi_model(model)
+    )
 
 
 class InferenceConfiguration(TypedDict):
@@ -865,6 +890,21 @@ class ConverseConfiguration(TypedDict):
     inferenceConfig: InferenceConfiguration
     guardrailConfig: NotRequired[GuardrailConfiguration]
     additionalModelRequestFields: NotRequired[dict[str, Any]]
+
+
+def _prepare_kimi_model_params(
+    model: type_model_name, generation_params: Optional[GenerationParamsModel] = None
+) -> ConverseConfiguration:
+    """Minimal inference configuration for Moonshot AI Kimi models (Batterypool patch).
+    Only maxTokens is sent; Kimi keeps its own sampling defaults."""
+    inference_config: InferenceConfiguration = {
+        "maxTokens": (
+            generation_params.max_tokens
+            if generation_params
+            else 16384  # Kimi spends tokens on reasoning before it answers
+        ),
+    }
+    return {"inferenceConfig": inference_config}
 
 
 def _prepare_deepseek_model_params(
@@ -1201,6 +1241,10 @@ def generation_params_to_converse_configuration(
         converse_configuration = _prepare_deepseek_model_params(
             model, generation_params
         )
+
+    elif is_kimi_model(model):
+        # Special handling for Moonshot AI Kimi models (Batterypool patch)
+        converse_configuration = _prepare_kimi_model_params(model, generation_params)
 
     elif is_llama_model(model):
         # Special handling for Llama models
