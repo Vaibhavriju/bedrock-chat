@@ -84,6 +84,16 @@ const translation = {
         description:
           'Modelo de peso abierto de 120B parámetros con ventana de contexto de 128K y capacidades avanzadas de razonamiento.',
       },
+      'kimi-k3': {
+        label: 'Kimi K3',
+        description:
+          'Moonshot AI open-weight reasoning model with a 1M-token context window. Strong at coding and analysis; shows its reasoning and can be slow.',
+      },
+      'deepseek-v3.2': {
+        label: 'DeepSeek V3.2',
+        description:
+          'Low-cost open-weight model with a 128K context window, good for everyday questions and drafting. Text only.',
+      },
       'gpt-6-sol': {
         label: 'GPT-6 Sol',
         description: 'OpenAI GPT-6 Sol. Admite entrada de texto e imágenes.',
