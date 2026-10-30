@@ -404,3 +404,5 @@ BEDROCK_PRICING = {
         "llama3-2-3b-instruct": {"input": 0.00019, "output": 0.00019},
     },
 }
+
+# Batterypool build marker 2026-10-30b
