@@ -67,6 +67,7 @@
     "eslint-plugin-storybook": "^10.6.2",
     "eslint-plugin-tailwindcss": "^4.4.0",
     "globals": "^17.13.0",
+    "happy-dom": "^21.0.4",
     "msw": "^2.15.0",
     "msw-storybook-addon": "^3.0.3",
     "prettier": "^3.0.0",

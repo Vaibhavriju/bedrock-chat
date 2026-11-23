@@ -14,6 +14,7 @@ import useScroll from '../hooks/useScroll';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   PiArrowsCounterClockwise,
+  PiArrowDown,
   PiPenNib,
   PiWarningCircleFill,
 } from 'react-icons/pi';
@@ -221,10 +222,17 @@ const ChatPage: React.FC = () => {
 
   const { getBotId } = useConversation();
 
-  const { scrollToBottom, scrollToTop } = useScroll(conversationId);
-
   const { conversationId: paramConversationId, botId: paramBotId } =
     useParams();
+
+  const {
+    scrollToBottom,
+    scrollToTop,
+    viewportRef,
+    contentRef,
+    awayFromBottom,
+    jumpToBottom,
+  } = useScroll(paramConversationId ?? paramBotId ?? 'new');
 
   const botId = useMemo(() => {
     return paramBotId ?? getBotId(conversationId);
@@ -304,6 +312,7 @@ const ChatPage: React.FC = () => {
       base64EncodedImages?: string[],
       attachments?: AttachmentType[]
     ) => {
+      jumpToBottom();
       postChat({
         content,
         base64EncodedImages,
@@ -312,7 +321,7 @@ const ChatPage: React.FC = () => {
         enableReasoning,
       });
     },
-    [inputBotParams, postChat]
+    [inputBotParams, postChat, jumpToBottom]
   );
 
   const onChangeCurrentMessageId = useCallback(
@@ -344,17 +353,19 @@ const ChatPage: React.FC = () => {
 
   const onRegenerate = useCallback(
     (enableReasoning: boolean) => {
+      jumpToBottom();
       regenerate({
         bot: inputBotParams,
         enableReasoning,
       });
     },
-    [inputBotParams, regenerate]
+    [inputBotParams, regenerate, jumpToBottom]
   );
 
   const onContinueGenerate = useCallback(() => {
+    jumpToBottom();
     continueGenerate({ bot: inputBotParams });
-  }, [inputBotParams, continueGenerate]);
+  }, [inputBotParams, continueGenerate, jumpToBottom]);
 
   useLayoutEffect(() => {
     if (messages.length > 0) {
@@ -438,6 +449,7 @@ const ChatPage: React.FC = () => {
 
       if (isNewConversationCommand) {
         event.preventDefault();
+        newChat();
 
         if (botId) {
           navigate(`/bot/${botId}`);
@@ -493,15 +505,15 @@ const ChatPage: React.FC = () => {
 
   return (
     <div
-      className="workspace-chat relative flex h-full min-h-0 flex-1 flex-col"
+      className="workspace-chat relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
       onDragOver={onDragOver}
       onDrop={endDnd}
       onDragEnd={endDnd}>
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <div className="workspace-chat-header sticky top-0 z-10 flex h-16 w-full items-center justify-between border-b border-gray/15 px-4 sm:px-6">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="workspace-chat-header relative z-10 flex h-14 shrink-0 items-center justify-between border-b border-gray/15 px-3 sm:h-16 sm:px-6">
           <div className="flex w-full justify-between">
             <div className="p-2">
-              <div className="mr-10 flex items-center font-bold whitespace-nowrap">
+              <div className="flex min-w-0 items-center font-bold">
                 {isLoadingBot ? (
                   <Skeleton className="h-5 w-32" />
                 ) : (
@@ -510,7 +522,9 @@ const ChatPage: React.FC = () => {
                       botSharedStatus={bot?.sharedStatus}
                       className="mr-1 text-aws-aqua"
                     />
-                    {bot ? pageTitle : 'BatteryPool AI'}
+                    <span className="truncate">
+                      {bot ? pageTitle : 'BatteryPool AI'}
+                    </span>
                   </>
                 )}
               </div>
@@ -571,21 +585,24 @@ const ChatPage: React.FC = () => {
             )}
           </div>
           {getPostedModel() && (
-            <div className="workspace-model-label absolute top-5 right-5 rounded-full bg-aws-sea-blue-light/5 px-3 py-1 text-xs text-dark-gray dark:text-light-gray">
+            <div className="workspace-model-label ml-3 shrink-0 rounded-full bg-aws-sea-blue-light/5 px-3 py-1 text-xs text-dark-gray dark:text-light-gray">
               {getPostedModel()
                 ?.replace('claude-v', 'Claude ')
                 .replace(/-/g, ' ')}
             </div>
           )}
         </div>
-        <section className="relative h-[calc(100%-4rem)] min-h-0 overflow-hidden">
-          <div className="h-full">
-            <div
-              id="messages"
-              role="presentation"
-              className="workspace-messages flex h-full flex-col overflow-auto pb-6">
+        <section className="relative min-h-0 flex-1">
+          <div
+            id="messages"
+            ref={viewportRef}
+            role="region"
+            aria-label="Conversation"
+            tabIndex={0}
+            className="workspace-messages h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain">
+            <div ref={contentRef} className="flex min-h-full flex-col pb-4">
               {messages?.length === 0 ? (
-                <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center px-5 py-8 sm:py-12">
+                <div className="workspace-welcome-container m-auto flex w-full max-w-4xl shrink-0 flex-col items-center px-5 py-6 sm:py-8">
                   {!loadingConversation && (
                     <>
                       <ChatWelcome
@@ -612,7 +629,7 @@ const ChatPage: React.FC = () => {
                   {messages?.map((message, idx, array) => (
                     <div
                       key={message.id}
-                      className={`${
+                      className={`shrink-0 ${
                         message.role === 'assistant'
                           ? 'workspace-assistant-turn'
                           : ''
@@ -664,12 +681,24 @@ const ChatPage: React.FC = () => {
               )}
             </div>
           </div>
+          {awayFromBottom && messages.length > 0 && (
+            <button
+              type="button"
+              className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-gray/30 bg-white px-4 py-2 text-sm shadow-md dark:bg-aws-ui-color-dark"
+              onClick={() => {
+                jumpToBottom();
+                viewportRef.current?.focus({ preventScroll: true });
+              }}>
+              <PiArrowDown aria-hidden="true" />
+              Jump to latest
+            </button>
+          )}
         </section>
       </div>
 
       <div
         className={twMerge(
-          'workspace-composer-area z-10 flex shrink-0 flex-col items-center justify-center px-3 pb-3 sm:px-6 sm:pb-5'
+          'workspace-composer-area z-10 flex max-h-[60dvh] shrink-0 flex-col items-center overflow-y-auto px-3 pt-2 pb-3 sm:px-6 sm:pb-4'
         )}>
         {bot && bot.syncStatus !== SyncStatus.SUCCEEDED && (
           <div className="mb-8 w-1/2">
@@ -683,9 +712,10 @@ const ChatPage: React.FC = () => {
         {messages.length === 0 && (
           <div className="mb-3 flex w-full max-w-4xl flex-wrap gap-2">
             {bot?.conversationQuickStarters?.map((qs, idx) => (
-              <div
+              <button
                 key={idx}
-                className="w-[calc(33.333%-0.5rem)] cursor-pointer rounded-2xl border border-aws-squid-ink-light/20 bg-white p-2 text-sm text-dark-gray hover:shadow-lg hover:shadow-gray dark:border-aws-squid-ink-dark/20 dark:text-light-gray"
+                type="button"
+                className="min-w-0 flex-1 rounded-xl border border-gray/20 bg-white p-2 text-left text-sm text-dark-gray hover:bg-aws-sea-blue-light/5 dark:bg-aws-ui-color-dark dark:text-light-gray"
                 onClick={() => {
                   onSend(qs.example, reasoningEnabled);
                 }}>
@@ -693,7 +723,7 @@ const ChatPage: React.FC = () => {
                   <PiPenNib />
                 </div>
                 {qs.title}
-              </div>
+              </button>
             ))}
           </div>
         )}

@@ -28,14 +28,7 @@ const ExpandableDrawerGroup: React.FC<Props> = ({
 
         <span>{props.label}</span>
       </button>
-      <div className="">
-        <div
-          className={`origin-top transition-all ${
-            isShow ? 'visible' : 'h-0 scale-y-0'
-          }`}>
-          {props.children}
-        </div>
-      </div>
+      <div hidden={!isShow}>{props.children}</div>
     </div>
   );
 };

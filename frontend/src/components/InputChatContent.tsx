@@ -240,17 +240,6 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
 
     useEffect(() => {
       const currentElem = inputRef?.current;
-      const keypressListener = (e: DocumentEventMap['keypress']) => {
-        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
-          e.preventDefault();
-
-          if (!disabledSend) {
-            sendContent();
-          }
-        }
-      };
-      currentElem?.addEventListener('keypress', keypressListener);
-
       const pasteListener = (e: DocumentEventMap['paste']) => {
         const clipboardItems = e.clipboardData?.items;
         if (!clipboardItems || clipboardItems.length === 0) {
@@ -270,7 +259,6 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
       currentElem?.addEventListener('paste', pasteListener);
 
       return () => {
-        currentElem?.removeEventListener('keypress', keypressListener);
         currentElem?.removeEventListener('paste', pasteListener);
       };
     });
@@ -323,13 +311,13 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
           onDragOver={onDragOver}
           onDrop={onDrop}
           className={twMerge(
-            'workspace-composer relative flex w-full flex-col gap-1 rounded-2xl border border-gray/20 bg-white shadow-sm dark:bg-aws-ui-color-dark',
+            'workspace-composer relative flex w-full shrink-0 flex-col gap-1 rounded-2xl border border-gray/20 bg-white shadow-sm dark:bg-aws-ui-color-dark',
             props.className
           )}>
           <div className="flex w-full">
             <Textarea
               key={`textarea-${props.isNewChat}`} // Add a key to force re-render
-              className="m-1 scrollbar-thin bg-transparent pr-4"
+              className="min-w-0 scrollbar-thin bg-transparent"
               label="Message BatteryPool AI"
               hideLabel
               placeholder={
@@ -340,16 +328,27 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
               }
               disabled={props.disabled}
               noBorder
-              rows={props.isNewChat ? 3 : 2}
+              rows={2}
               value={content}
               onChange={setContent}
+              onKeyDown={(event) => {
+                if (
+                  event.key === 'Enter' &&
+                  !event.shiftKey &&
+                  !event.nativeEvent.isComposing &&
+                  event.nativeEvent.keyCode !== 229
+                ) {
+                  event.preventDefault();
+                  sendContent();
+                }
+              }}
               ref={focusInputRef}
             />
           </div>
           <div className="right-0 bottom-0 flex w-full items-center justify-between px-2">
             <div className="flex">
               <ButtonFileChoose
-                disabled={props.isLoading}
+                disabled={props.isLoading || props.disabled}
                 icon
                 onChange={onChangeFile}>
                 <span title="Attach files up to 25 MB each">
@@ -374,7 +373,7 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
             />
           </div>
           {base64EncodedImages.length > 0 && (
-            <div className="relative m-2 mr-24 flex flex-wrap gap-3">
+            <div className="relative m-2 flex max-h-28 shrink-0 flex-wrap gap-3 overflow-y-auto p-2">
               {base64EncodedImages.map((imageFile, idx) => (
                 <div key={idx} className="relative">
                   <img
@@ -428,7 +427,9 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
             </p>
           )}
           {uploads.items.length > 0 && (
-            <div className="mx-3 mb-3 grid gap-2" aria-live="polite">
+            <div
+              className="mx-3 mb-3 grid max-h-40 shrink-0 gap-2 overflow-y-auto overscroll-contain"
+              aria-live="polite">
               {uploads.items.map((item) => (
                 <div
                   key={item.id}
@@ -497,7 +498,7 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
             </div>
           )}
           {props.canRegenerate && (
-            <div className="absolute -top-14 right-0 flex space-x-2">
+            <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-gray/15 p-2">
               {props.canContinue &&
                 !props.disabledContinue &&
                 !props.disabled && (

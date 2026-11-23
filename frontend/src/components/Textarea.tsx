@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useRef } from 'react';
 import { BaseProps } from '../@types/common';
 import { twMerge } from 'tailwind-merge';
 
@@ -12,13 +12,13 @@ type Props = BaseProps & {
   noBorder?: boolean;
   rows?: number;
   onChange?: (value: string) => void;
+  onKeyDown?: React.KeyboardEventHandler<HTMLTextAreaElement>;
 };
 
 const MAX_HEIGHT = 300;
 
 const Textarea = forwardRef<HTMLElement, Props>((props, focusInputRef) => {
   const ref = useRef<HTMLTextAreaElement | null>(null);
-  const [isMax, setIsMax] = useState(false);
 
   useEffect(() => {
     if (!ref.current) {
@@ -29,10 +29,8 @@ const Textarea = forwardRef<HTMLElement, Props>((props, focusInputRef) => {
 
     if (ref.current.scrollHeight > MAX_HEIGHT) {
       ref.current.style.height = MAX_HEIGHT + 'px';
-      setIsMax(true);
     } else {
       ref.current.style.height = ref.current.scrollHeight + 'px';
-      setIsMax(false);
     }
   }, [props.value]);
 
@@ -51,7 +49,7 @@ const Textarea = forwardRef<HTMLElement, Props>((props, focusInputRef) => {
         }}
         className={twMerge(
           'peer w-full resize-none rounded-sm bg-white p-1.5 outline-hidden dark:bg-aws-ui-color-dark dark:placeholder-aws-font-color-gray',
-          isMax ? 'overflow-y-auto' : 'overflow-hidden',
+          'overflow-y-auto',
           props.noBorder
             ? ''
             : 'border border-aws-font-color-light/50 dark:border-aws-font-color-dark/50',
@@ -62,6 +60,7 @@ const Textarea = forwardRef<HTMLElement, Props>((props, focusInputRef) => {
         placeholder={props.placeholder}
         disabled={props.disabled}
         value={props.value}
+        onKeyDown={props.onKeyDown}
         onChange={(e) => {
           props.onChange?.(e.target.value);
         }}
