@@ -14,7 +14,7 @@ REGION = "us-east-1"
 PROJECT = "Project-qxDibdGZgEGd"
 ACCOUNT = "940880953077"
 REPOSITORY = "https://github.com/Vaibhavriju/bedrock-chat.git"
-REVIEWED_COMMIT = "d8118581269aa9afa0e4234029f24a21498a633b"
+REVIEWED_COMMIT = "fdc9347fe9f0604d03084d0c88e266d2f8e8cc40"
 BRANCH = "improve-chat-experience"
 
 
@@ -30,6 +30,14 @@ def deploy_or_check(client):
     ]
     if matches:
         return max(matches, key=lambda build: build["startTime"]), False
+
+    active = [build for build in builds if build.get("buildStatus") == "IN_PROGRESS"]
+    if active:
+        latest = max(active, key=lambda build: build["startTime"])
+        raise ValueError(
+            f"Deployment {latest['id']} is still running. Wait for it to finish and rerun; "
+            "no concurrent deployment was started."
+        )
 
     projects = client.batch_get_projects(names=[PROJECT]).get("projects", [])
     if not projects:
