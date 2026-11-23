@@ -161,10 +161,11 @@ def _convert_to_valid_file_name(file_name: str) -> str:
 class AttachmentContentModel(BaseModel):
     content_type: Literal["attachment"]
     body: Base64EncodedBytes = Field(
-        ...,
-        description="Attachment file bytes.",
+        default=b"",
+        description="Legacy inline attachment bytes.",
     )
     file_name: str
+    object_key: str | None = None
 
     @classmethod
     def from_attachment_content(cls, content: AttachmentContent) -> Self:
@@ -172,6 +173,7 @@ class AttachmentContentModel(BaseModel):
             content_type="attachment",
             body=content.body,
             file_name=content.file_name,
+            object_key=content.object_key,
         )
 
     def to_content(self) -> Content:
@@ -179,6 +181,7 @@ class AttachmentContentModel(BaseModel):
             content_type="attachment",
             body=self.body,
             file_name=self.file_name,
+            object_key=self.object_key,
         )
 
     @property
@@ -191,7 +194,7 @@ class AttachmentContentModel(BaseModel):
             path = Path(self.file_name)
 
         # e.g. "document.txt" -> "txt"
-        format = path.suffix[1:]
+        format = path.suffix[1:].lower()
 
         # e.g. "document.txt" -> "document"
         name = _convert_to_valid_file_name(path.stem)
@@ -202,7 +205,40 @@ class AttachmentContentModel(BaseModel):
         )
 
     def to_contents_for_converse(self) -> list[ContentBlockTypeDef]:
+        if self.object_key:
+            from app.attachments import attachment_content
+
+            manifest, payload = attachment_content(self.object_key)
+            if manifest["kind"] == "text":
+                # Content is a text block, so code files do not consume document slots.
+                # Treat the labelled file as untrusted data, not system instructions.
+                return [
+                    {
+                        "text": f"Attached file: {manifest['filename']}\n{payload.decode('utf-8')}"
+                    }
+                ]
+            format = Path(manifest["filename"]).suffix[1:].lower()
+            name = (
+                _convert_to_valid_file_name(Path(manifest["filename"]).stem)
+                or "Attachment"
+            )
+            return [
+                {
+                    "document": {
+                        "format": format,
+                        "name": name,
+                        "source": {"bytes": payload},
+                    }
+                }
+            ]
         format, name = self.format_and_name
+        if format is None:
+            # Legacy developer files must be text, not invalid DocumentBlocks.
+            return [
+                {
+                    "text": f"Attached file: {self.file_name}\n{self.body.decode('utf-8')}"
+                }
+            ]
 
         return [
             {

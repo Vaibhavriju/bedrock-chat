@@ -2,7 +2,6 @@ import React, {
   forwardRef,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -19,21 +18,15 @@ import { LuFilePlus2 } from 'react-icons/lu';
 import { useTranslation } from 'react-i18next';
 import ButtonIcon from './ButtonIcon';
 import useModel from '../hooks/useModel';
-import { produce } from 'immer';
 import { twMerge } from 'tailwind-merge';
 import { create } from 'zustand';
 import ButtonFileChoose from './ButtonFileChoose';
 import ButtonReasoning from './ButtonReasoning';
 import { BaseProps } from '../@types/common';
 import ModalDialog from './ModalDialog';
-import UploadedAttachedFile from './UploadedAttachedFile';
 import useSnackbar from '../hooks/useSnackbar';
-import {
-  MAX_FILE_SIZE_BYTES,
-  MAX_FILE_SIZE_MB,
-  SUPPORTED_FILE_EXTENSIONS,
-  MAX_ATTACHED_FILES,
-} from '../constants/supportedAttachedFiles';
+import useAttachmentUploads from '../hooks/useAttachmentUploads';
+import { formatFileSize, supportedAttachment } from '../utils/attachments';
 
 type Props = BaseProps & {
   disabledSend?: boolean;
@@ -62,93 +55,44 @@ type Props = BaseProps & {
 // Ref: https://docs.anthropic.com/en/docs/build-with-claude/vision#evaluate-image-size
 const MAX_IMAGE_WIDTH = 1568;
 const MAX_IMAGE_HEIGHT = 1568;
-// 6 MB (Lambda response size limit is 6 MB)
-// Ref: https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html
-// Converse API can handle 4.5 MB x 5 files, but the API to fetch conversation history is based on the lambda,
-// so we limit the size to 6 MB to prevent the error.
-// Need to refactor if want to increase the limit by using s3 presigned URL.
-const MAX_FILE_SIZE_TO_SEND_MB = 6;
-const MAX_FILE_SIZE_TO_SEND_BYTES = MAX_FILE_SIZE_TO_SEND_MB * 1024 * 1024;
+// Only resized inline images share the legacy payload budget. Files upload to S3.
+const MAX_IMAGE_PAYLOAD_BYTES = 6 * 1024 * 1024;
 
 const useInputChatContentState = create<{
   base64EncodedImages: string[];
-  pushBase64EncodedImage: (encodedImage: string) => void;
+  pushBase64EncodedImage: (image: string) => boolean;
   removeBase64EncodedImage: (index: number) => void;
   clearBase64EncodedImages: () => void;
-  attachedFiles: {
-    name: string;
-    type: string;
-    size: number;
-    content: string;
-  }[];
-  pushTextFile: (file: {
-    name: string;
-    type: string;
-    size: number;
-    content: string;
-  }) => void;
-  removeTextFile: (index: number) => void;
-  clearAttachedFiles: () => void;
   previewImageUrl: string | null;
   setPreviewImageUrl: (url: string | null) => void;
   isOpenPreviewImage: boolean;
-  setIsOpenPreviewImage: (isOpen: boolean) => void;
-  totalFileSizeToSend: number;
-  setTotalFileSizeToSend: (size: number) => void;
+  setIsOpenPreviewImage: (open: boolean) => void;
 }>((set, get) => ({
   base64EncodedImages: [],
-  pushBase64EncodedImage: (encodedImage) => {
+  pushBase64EncodedImage: (image) => {
+    const images = get().base64EncodedImages;
+    // Derive size from the actual queue, including concurrent FileReader results.
+    if (
+      images.length >= 20 ||
+      images.reduce((n, value) => n + value.length, image.length) >
+        MAX_IMAGE_PAYLOAD_BYTES
+    ) {
+      return false;
+    }
+    set({ base64EncodedImages: [...images, image] });
+    return true;
+  },
+  removeBase64EncodedImage: (index) =>
     set({
-      base64EncodedImages: produce(get().base64EncodedImages, (draft) => {
-        draft.push(encodedImage);
-      }),
-    });
-  },
-  removeBase64EncodedImage: (index) => {
-    set({
-      base64EncodedImages: produce(get().base64EncodedImages, (draft) => {
-        draft.splice(index, 1);
-      }),
-    });
-  },
-  clearBase64EncodedImages: () => {
-    set({
-      base64EncodedImages: [],
-    });
-  },
-  previewImageUrl: null,
-  setPreviewImageUrl: (url) => {
-    set({ previewImageUrl: url });
-  },
-  isOpenPreviewImage: false,
-  setIsOpenPreviewImage: (isOpen) => {
-    set({ isOpenPreviewImage: isOpen });
-  },
-  attachedFiles: [],
-  pushTextFile: (file) => {
-    set({
-      attachedFiles: produce(get().attachedFiles, (draft) => {
-        draft.push(file);
-      }),
-    });
-  },
-  removeTextFile: (index) => {
-    set({
-      attachedFiles: produce(get().attachedFiles, (draft) => {
-        draft.splice(index, 1);
-      }),
-    });
-  },
-  clearAttachedFiles: () => {
-    set({
-      attachedFiles: [],
-    });
-  },
-  totalFileSizeToSend: 0,
-  setTotalFileSizeToSend: (size) =>
-    set({
-      totalFileSizeToSend: size,
+      base64EncodedImages: get().base64EncodedImages.filter(
+        (_, i) => i !== index
+      ),
     }),
+  clearBase64EncodedImages: () => set({ base64EncodedImages: [] }),
+  previewImageUrl: null,
+  setPreviewImageUrl: (previewImageUrl) => set({ previewImageUrl }),
+  isOpenPreviewImage: false,
+  setIsOpenPreviewImage: (isOpenPreviewImage) => set({ isOpenPreviewImage }),
 }));
 
 const InputChatContent = forwardRef<HTMLElement, Props>(
@@ -160,10 +104,6 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
       acceptMediaType,
       forceReasoningEnabled,
     } = useModel();
-
-    const extendedAcceptMediaType = useMemo(() => {
-      return [...acceptMediaType, ...SUPPORTED_FILE_EXTENSIONS];
-    }, [acceptMediaType]);
 
     const [content, setContent] = useState('');
     const { reasoningEnabled, onChangeReasoning } = props;
@@ -177,37 +117,49 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
       setPreviewImageUrl,
       isOpenPreviewImage,
       setIsOpenPreviewImage,
-      attachedFiles,
-      pushTextFile,
-      removeTextFile,
-      clearAttachedFiles,
-      totalFileSizeToSend,
-      setTotalFileSizeToSend,
     } = useInputChatContentState();
 
     useEffect(() => {
       clearBase64EncodedImages();
-      clearAttachedFiles();
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     const { open } = useSnackbar();
 
-    const disabledSend = useMemo(() => {
-      return content === '' || props.disabledSend;
-    }, [content, props.disabledSend]);
+    const uploads = useAttachmentUploads();
+    const needsDocumentModel =
+      uploads.items.some((item) => item.ready?.kind === 'document') &&
+      !model?.modelId.startsWith('claude-');
+    const disabledSend =
+      (!content.trim() &&
+        uploads.items.length === 0 &&
+        base64EncodedImages.length === 0) ||
+      props.disabledSend ||
+      uploads.busy ||
+      uploads.hasErrors ||
+      needsDocumentModel;
 
     const inputRef = useRef<HTMLDivElement>(null);
 
     const sendContent = useCallback(() => {
-      const attachments = attachedFiles.map((file) => ({
-        fileName: file.name,
-        fileType: file.type,
-        extractedContent: file.content,
-      }));
+      if (disabledSend || props.disabled || props.isLoading) {
+        return;
+      }
+      const attachments = uploads.items.flatMap((item) =>
+        item.ready
+          ? [
+              {
+                fileName: item.ready.fileName,
+                fileType: item.file.type,
+                extractedContent: '',
+                objectKey: item.ready.objectKey,
+              },
+            ]
+          : []
+      );
 
       props.onSend(
-        content,
+        content.trim() ? content : 'Please analyze the attached files.',
         props.reasoningEnabled,
         !disabledImageUpload && base64EncodedImages.length > 0
           ? base64EncodedImages
@@ -215,13 +167,13 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
         attachments.length > 0 ? attachments : undefined
       );
       setContent('');
+      uploads.clear();
       clearBase64EncodedImages();
-      clearAttachedFiles();
     }, [
       base64EncodedImages,
-      attachedFiles,
+      uploads,
+      disabledSend,
       clearBase64EncodedImages,
-      clearAttachedFiles,
       content,
       disabledImageUpload,
       props,
@@ -269,91 +221,21 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
 
             const resizedImageData = canvas.toDataURL('image/png');
 
-            // Total file size check
-            if (
-              totalFileSizeToSend + resizedImageData.length >
-              MAX_FILE_SIZE_TO_SEND_BYTES
-            ) {
+            if (!pushBase64EncodedImage(resizedImageData)) {
               open(
-                t('error.totalFileSizeToSendExceeded', {
-                  maxSize: `${MAX_FILE_SIZE_TO_SEND_MB} MB`,
-                })
+                'Attach up to 20 images within a 6 MB resized-image budget. Remove an image and try again.'
               );
-              return;
             }
-
-            pushBase64EncodedImage(resizedImageData);
-            setTotalFileSizeToSend(
-              totalFileSizeToSend + resizedImageData.length
-            );
           };
         };
       },
-      [
-        pushBase64EncodedImage,
-        totalFileSizeToSend,
-        setTotalFileSizeToSend,
-        open,
-        t,
-      ]
-    );
-
-    const handleAttachedFileRead = useCallback(
-      (file: File) => {
-        if (file.size > MAX_FILE_SIZE_BYTES) {
-          open(
-            t('error.attachment.fileSizeExceeded', {
-              maxSize: `${MAX_FILE_SIZE_MB} MB`,
-            })
-          );
-          return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = () => {
-          if (reader.result instanceof ArrayBuffer) {
-            // Convert from byte to base64 encoded string
-            const byteArray = new Uint8Array(reader.result);
-            let binaryString = '';
-            const chunkSize = 8192;
-
-            for (let i = 0; i < byteArray.length; i += chunkSize) {
-              const chunk = byteArray.slice(i, i + chunkSize);
-              // To avoid `Maximum call stack size exceeded` error, split into smaller chunks
-              binaryString += String.fromCharCode(...chunk);
-            }
-            const base64String = btoa(binaryString);
-
-            // Total file size check
-            if (
-              totalFileSizeToSend + base64String.length >
-              MAX_FILE_SIZE_TO_SEND_BYTES
-            ) {
-              open(
-                t('error.totalFileSizeToSendExceeded', {
-                  maxSize: `${MAX_FILE_SIZE_TO_SEND_MB} MB`,
-                })
-              );
-              return;
-            }
-            pushTextFile({
-              name: file.name,
-              type: file.type,
-              size: file.size,
-              content: base64String,
-            });
-            setTotalFileSizeToSend(totalFileSizeToSend + base64String.length);
-          }
-        };
-        reader.readAsArrayBuffer(file);
-      },
-      [pushTextFile, totalFileSizeToSend, setTotalFileSizeToSend, open, t]
+      [pushBase64EncodedImage, open]
     );
 
     useEffect(() => {
       const currentElem = inputRef?.current;
       const keypressListener = (e: DocumentEventMap['keypress']) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
           e.preventDefault();
 
           if (!disabledSend) {
@@ -387,64 +269,29 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
       };
     });
 
-    const onChangeFile = useCallback(
-      (fileList: FileList) => {
-        // Check if the total number of attached files exceeds the limit
-        const currentAttachedFiles =
-          useInputChatContentState.getState().attachedFiles;
-        const currentAttachedFilesCount = currentAttachedFiles.filter((file) =>
-          SUPPORTED_FILE_EXTENSIONS.some((extension) =>
-            file.name.endsWith(extension)
-          )
-        ).length;
-
-        let newAttachedFilesCount = 0;
-        for (let i = 0; i < fileList.length; i++) {
-          const file = fileList.item(i);
-          if (file) {
-            if (
-              SUPPORTED_FILE_EXTENSIONS.some((extension) =>
-                file.name.endsWith(extension)
-              )
-            ) {
-              newAttachedFilesCount++;
-            }
-          }
-        }
-
-        if (
-          currentAttachedFilesCount + newAttachedFilesCount >
-          MAX_ATTACHED_FILES
+    const onChangeFile = (fileList: FileList) => {
+      if (props.disabled || props.isLoading) {
+        return;
+      }
+      const files: File[] = [];
+      for (const file of Array.from(fileList)) {
+        if (supportedAttachment(file.name)) {
+          files.push(file);
+        } else if (
+          acceptMediaType.some((ext) => file.name.toLowerCase().endsWith(ext))
         ) {
+          encodeAndPushImage(file);
+        } else {
           open(
-            t('error.attachment.fileCountExceeded', {
-              maxCount: MAX_ATTACHED_FILES,
-            })
+            `${file.name}: unsupported format. Use text, code, PDF, Office documents or a source ZIP.`
           );
-          return;
         }
-
-        for (let i = 0; i < fileList.length; i++) {
-          const file = fileList.item(i);
-          if (file) {
-            if (
-              SUPPORTED_FILE_EXTENSIONS.some((extension) =>
-                file.name.endsWith(extension)
-              )
-            ) {
-              handleAttachedFileRead(file);
-            } else if (
-              acceptMediaType.some((extension) => file.name.endsWith(extension))
-            ) {
-              encodeAndPushImage(file);
-            } else {
-              open(t('error.unsupportedFileFormat'));
-            }
-          }
-        }
-      },
-      [encodeAndPushImage, handleAttachedFileRead, open, t, acceptMediaType]
-    );
+      }
+      const errors = uploads.add(files);
+      if (errors.length) {
+        open(errors.join('\n'));
+      }
+    };
 
     const onDragOver: React.DragEventHandler<HTMLDivElement> = useCallback(
       (e) => {
@@ -453,19 +300,16 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
       []
     );
 
-    const onDrop: React.DragEventHandler<HTMLDivElement> = useCallback(
-      (e) => {
-        e.preventDefault();
-        onChangeFile(e.dataTransfer.files);
-      },
-      [onChangeFile]
-    );
+    const onDrop: React.DragEventHandler<HTMLDivElement> = (e) => {
+      e.preventDefault();
+      onChangeFile(e.dataTransfer.files);
+    };
 
     return (
       <>
         {props.dndMode && (
           <div
-            className="fixed left-0 top-0 size-full bg-black/40"
+            className="fixed top-0 left-0 size-full bg-black/40"
             onDrop={onDrop}></div>
         )}
         <div
@@ -474,13 +318,17 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
           onDrop={onDrop}
           className={twMerge(
             props.className,
-            'relative mb-7 flex w-11/12 flex-col gap-1 rounded-xl border border-black/10 bg-white shadow-[0_0_30px_7px] shadow-light-gray dark:bg-aws-ui-color-dark dark:shadow-black/35 md:w-10/12 lg:w-4/6 xl:w-3/6'
+            'relative mb-7 flex w-11/12 flex-col gap-1 rounded-xl border border-black/10 bg-white shadow-[0_0_30px_7px] shadow-light-gray md:w-10/12 lg:w-4/6 xl:w-3/6 dark:bg-aws-ui-color-dark dark:shadow-black/35'
           )}>
           <div className="flex w-full">
             <Textarea
               key={`textarea-${props.isNewChat}`} // Add a key to force re-render
-              className="m-1 bg-transparent pr-12 scrollbar-thin"
-              placeholder={t('app.inputMessage')}
+              className="m-1 scrollbar-thin bg-transparent pr-4"
+              placeholder={
+                props.isNewChat
+                  ? 'Ask a question, review code, or drop files here…'
+                  : t('app.inputMessage')
+              }
               disabled={props.disabled}
               noBorder
               rows={props.isNewChat ? 3 : 1}
@@ -489,14 +337,16 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
               ref={focusInputRef}
             />
           </div>
-          <div className="bottom-0 right-0 flex w-full items-center justify-between px-2">
+          <div className="right-0 bottom-0 flex w-full items-center justify-between px-2">
             <div className="flex">
               <ButtonFileChoose
                 disabled={props.isLoading}
                 icon
-                accept={extendedAcceptMediaType.join(',')}
                 onChange={onChangeFile}>
-                <LuFilePlus2 />
+                <span title="Attach files up to 25 MB each">
+                  <LuFilePlus2 />
+                  <span className="sr-only">Attach files</span>
+                </span>
               </ButtonFileChoose>
               {props.supportReasoning && (
                 <ButtonReasoning
@@ -527,7 +377,7 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
                     }}
                   />
                   <ButtonIcon
-                    className="absolute left-0 top-0 -m-2 border border-aws-sea-blue-light bg-white p-1 text-xs text-aws-sea-blue-light dark:border-aws-sea-blue-dark dark:text-aws-sea-blue-dark"
+                    className="absolute top-0 left-0 -m-2 border border-aws-sea-blue-light bg-white p-1 text-xs text-aws-sea-blue-light dark:border-aws-sea-blue-dark dark:text-aws-sea-blue-dark"
                     onClick={() => {
                       removeBase64EncodedImage(idx);
                     }}>
@@ -550,18 +400,89 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
               </ModalDialog>
             </div>
           )}
-          {attachedFiles.length > 0 && (
-            <div className="relative m-2 mr-24 flex flex-wrap gap-3">
-              {attachedFiles.map((file, idx) => (
-                <div key={idx} className="relative flex flex-col items-center">
-                  <UploadedAttachedFile fileName={file.name} />
-                  <ButtonIcon
-                    className="absolute left-2 top-1 -m-2 border border-aws-sea-blue-light bg-white p-1 text-xs text-aws-sea-blue-light dark:border-aws-sea-blue-dark dark:text-aws-sea-blue-dark"
-                    onClick={() => {
-                      removeTextFile(idx);
-                    }}>
-                    <PiX />
-                  </ButtonIcon>
+          <div className="px-4 pb-3 text-xs text-dark-gray dark:text-light-gray">
+            <p>
+              Code, source ZIPs, PDFs, spreadsheets & slides · 25 MB/file · 10
+              files · 100 MB total
+            </p>
+            <p className="mt-1 opacity-75">
+              Up to 600,000 extracted characters per conversation. Enter to send
+              · Shift+Enter for a new line.
+            </p>
+          </div>
+          {needsDocumentModel && (
+            <p
+              role="alert"
+              className="mx-4 mb-3 text-sm text-amber-700 dark:text-amber-300">
+              Choose a Claude model to read the original PDF, DOC or XLS
+              attachment.
+            </p>
+          )}
+          {uploads.items.length > 0 && (
+            <div className="mx-3 mb-3 grid gap-2" aria-live="polite">
+              {uploads.items.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-lg border border-gray/30 bg-light-gray/30 p-3 dark:bg-aws-paper-dark">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className="truncate text-sm font-medium"
+                        title={item.file.name}>
+                        {item.file.name}
+                      </div>
+                      <div className="mt-1 text-xs opacity-75">
+                        {formatFileSize(item.size)} ·{' '}
+                        {item.status === 'ready'
+                          ? 'Ready'
+                          : item.status === 'processing'
+                            ? 'Reading file…'
+                            : item.status === 'uploading'
+                              ? `Uploading ${item.progress}%`
+                              : item.status === 'error'
+                                ? 'Needs attention'
+                                : 'Waiting to upload'}
+                      </div>
+                    </div>
+                    {item.status === 'error' && (
+                      <button
+                        type="button"
+                        className="text-xs underline"
+                        onClick={() => uploads.retry(item)}>
+                        Retry
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${item.file.name}`}
+                      className="rounded p-1 hover:bg-gray/20"
+                      onClick={() => uploads.remove(item.id)}>
+                      <PiX />
+                    </button>
+                  </div>
+                  {item.status === 'uploading' && (
+                    <progress
+                      className="mt-2 h-1 w-full"
+                      value={item.progress}
+                      max={100}
+                      aria-label={`Uploading ${item.file.name}`}
+                    />
+                  )}
+                  {item.ready && (
+                    <p className="mt-2 text-xs opacity-75">
+                      {item.ready.notice}
+                      {item.ready.characters > 0
+                        ? ` ${item.ready.characters.toLocaleString()} characters.`
+                        : ''}
+                    </p>
+                  )}
+                  {item.error && (
+                    <p
+                      role="alert"
+                      className="text-red dark:text-red mt-2 text-xs">
+                      {item.error}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

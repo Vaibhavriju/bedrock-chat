@@ -36,6 +36,7 @@ export type AttachmentType = {
   fileName: string;
   fileType: string;
   extractedContent: string;
+  objectKey?: string;
 };
 
 export type ThinkingAction =
@@ -401,6 +402,7 @@ const useChat = () => {
       (attachment) => {
         return {
           body: attachment.extractedContent,
+          objectKey: attachment.objectKey,
           contentType: 'attachment',
           mediaType: attachment.fileType,
           fileName: attachment.fileName,

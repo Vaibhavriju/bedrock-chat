@@ -42,6 +42,18 @@ def store_conversation(
     logger.info(f"Storing conversation: {conversation.model_dump_json()}")
     table = get_conversation_table_client(user_id)
 
+    from app.attachments import bind_attachment
+    from app.repositories.models.conversation import AttachmentContentModel
+
+    keys = {
+        content.object_key
+        for message in conversation.message_map.values()
+        for content in message.content
+        if isinstance(content, AttachmentContentModel) and content.object_key
+    }
+    for key in keys:
+        bind_attachment(key, user_id, conversation.id)
+
     item_params = {
         "PK": user_id,
         "SK": compose_conv_id(user_id, conversation.id),
@@ -188,6 +200,17 @@ def delete_conversation_by_id(user_id: str, conversation_id: str):
     table = get_conversation_table_client(user_id)
 
     try:
+        from app.attachments import delete_chat_attachments
+        from app.repositories.models.conversation import AttachmentContentModel
+
+        conversation = find_conversation_by_id(user_id, conversation_id)
+        keys = {
+            content.object_key
+            for message in conversation.message_map.values()
+            for content in message.content
+            if isinstance(content, AttachmentContentModel) and content.object_key
+        }
+        delete_chat_attachments(user_id, conversation_id, keys)
         # Check if the conversation has a large message map
         response = table.get_item(
             Key={"PK": user_id, "SK": compose_conv_id(user_id, conversation_id)},

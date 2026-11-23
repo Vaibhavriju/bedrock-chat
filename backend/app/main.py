@@ -9,6 +9,7 @@ from app.repositories.common import (
     RecordNotFoundError,
     ResourceConflictError,
 )
+from app.routes.attachments import router as attachments_router
 from app.routes.admin import router as admin_router
 from app.routes.api_publication import router as api_publication_router
 from app.routes.bot import router as bot_router
@@ -60,6 +61,7 @@ app = FastAPI(
 
 if not is_published_api:
     app.include_router(conversation_router)
+    app.include_router(attachments_router)
     app.include_router(bot_router)
     app.include_router(api_publication_router)
     app.include_router(admin_router)
@@ -133,10 +135,7 @@ def add_current_user_to_request(request: Request, call_next: ASGIApp):
 async def add_log_requests(request: Request, call_next: ASGIApp):
     logger.info(f"Request path: {request.url.path}")
     logger.info(f"Request method: {request.method}")
-    logger.info(f"Request headers: {request.headers}")
-
-    body = await request.body()
-    logger.info(f"Request body: {body.decode('utf-8')[:100]}...")
+    # Keep credentials and uploaded/private content out of request logs.
 
     response = await call_next(request)  # type: ignore
 

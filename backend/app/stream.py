@@ -192,7 +192,7 @@ class ConverseApiStreamHandler:
                 enable_reasoning=enable_reasoning,
                 prompt_caching_enabled=prompt_caching_enabled,
             )
-            logger.info(f"args for converse_stream: {args}")
+            logger.info("Starting streamed response: model=%s, messages=%d", self.model, len(messages))
 
             client = get_bedrock_runtime_client()
             try:

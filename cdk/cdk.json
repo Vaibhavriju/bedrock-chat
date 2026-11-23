@@ -78,7 +78,12 @@
     "enableBotStore": true,
     "enableBotStoreReplicas": false,
     "botStoreLanguage": "en",
-    "globalAvailableModels": [],
+    "globalAvailableModels": [
+      "claude-v4.6-sonnet", "claude-v4.6-opus", "claude-v4.5-haiku",
+      "claude-v4.5-sonnet", "kimi-k3", "deepseek-v3.2"
+    ],
+    "defaultModel": "claude-v4.6-sonnet",
+    "titleModel": "claude-v4.5-haiku",
     "tokenValidMinutes": 30,
     "alternateDomainName": "",
     "hostedZoneId": "",

@@ -154,6 +154,37 @@ def prepare_conversation(
             should_continue=False,
         )
 
+    # Validate ownership on every incoming reference; never trust browser-supplied keys.
+    from app.attachments import read_manifest, MAX_TEXT_CHARACTERS
+    from app.repositories.models.conversation import AttachmentContentModel
+
+    incoming_attachments = [
+        c for c in chat_input.message.content if c.content_type == "attachment"
+    ]
+    if len(incoming_attachments) > 10:
+        raise ValueError("Attach up to 10 files per message.")
+    manifest_cache = {}
+    total_upload_bytes = 0
+    for attachment in incoming_attachments:
+        if attachment.object_key:
+            if attachment.body:
+                raise ValueError(
+                    "Use either an attachment reference or inline bytes, not both."
+                )
+            manifest = read_manifest(attachment.object_key, user.id)
+            if manifest.get("conversation_id") not in (
+                None,
+                chat_input.conversation_id,
+            ):
+                raise ValueError(
+                    "Upload this file again to use it in a different conversation."
+                )
+            manifest_cache[attachment.object_key] = manifest
+            total_upload_bytes += manifest["size"]
+            attachment.file_name = manifest["filename"]
+    if total_upload_bytes > 100 * 1024 * 1024:
+        raise ValueError("Attachments can total up to 100 MB per message.")
+
     # Append user chat input to the conversation
     if not chat_input.continue_generate:
         new_message = MessageModel.from_message_input(chat_input.message)
@@ -172,7 +203,9 @@ def prepare_conversation(
             fallback_id = conversation.last_message_id
             if not fallback_id or fallback_id not in conversation.message_map:
                 fallback_id = (
-                    "instruction" if "instruction" in conversation.message_map else "system"
+                    "instruction"
+                    if "instruction" in conversation.message_map
+                    else "system"
                 )
             logger.warning(
                 f"Unknown parent message id '{parent_id}'; using '{fallback_id}' instead."
@@ -186,6 +219,38 @@ def prepare_conversation(
         message_id = (
             conversation.message_map[conversation.last_message_id].parent
             or "instruction"
+        )
+
+    # Check the selected conversation path, including earlier attachments, before inference.
+    text_characters = 0
+    document_count = 0
+    for message in trace_to_root(message_id, conversation.message_map):
+        for attachment in message.content:
+            if not isinstance(attachment, AttachmentContentModel):
+                continue
+            if attachment.object_key:
+                manifest = manifest_cache.get(attachment.object_key)
+                if manifest is None:
+                    manifest = read_manifest(attachment.object_key, user.id)
+                    manifest_cache[attachment.object_key] = manifest
+                text_characters += manifest["characters"]
+                document_count += int(manifest["kind"] == "document")
+            else:
+                native = attachment.format_and_name[0] is not None
+                document_count += int(native)
+                if not native:
+                    text_characters += len(attachment.body.decode("utf-8"))
+    if text_characters > MAX_TEXT_CHARACTERS:
+        raise ValueError(
+            "Attachments in this conversation exceed 600,000 extracted characters. Start a new chat or use a knowledge-base bot. Nothing was truncated."
+        )
+    if document_count > 5:
+        raise ValueError(
+            "This conversation contains more than 5 original documents. Start a new chat with the relevant files."
+        )
+    if document_count and not chat_input.message.model.startswith("claude-"):
+        raise ValueError(
+            "Choose a Claude model for original PDF, DOC and XLS attachments, or upload extracted text instead."
         )
 
     return (message_id, conversation, bot)

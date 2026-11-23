@@ -75,7 +75,10 @@ class AttachmentContent(BaseSchema):
         ...,
         description="File name of the attachment. Must be specified if `content_type` is `attachment`.",
     )
-    body: Base64EncodedBytes = Field(..., description="Content body.")
+    body: Base64EncodedBytes = Field(
+        default=b"", description="Legacy inline file bytes."
+    )
+    object_key: str | None = None
 
 
 class FeedbackInput(BaseSchema):

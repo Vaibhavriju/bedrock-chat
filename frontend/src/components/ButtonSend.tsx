@@ -19,6 +19,7 @@ const ButtonSend: React.FC<Props> = (props) => {
         props.disabled ? 'opacity-30' : '',
         props.className
       )}
+      aria-label={props.loading ? 'Generating response' : 'Send message'}
       onClick={props.onClick}
       disabled={props.disabled || props.loading}>
       {props.loading ? (

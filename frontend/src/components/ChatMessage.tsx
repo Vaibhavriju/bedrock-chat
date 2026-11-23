@@ -24,6 +24,7 @@ import ModalDialog from './ModalDialog';
 import { useTranslation } from 'react-i18next';
 import DialogFeedback from './DialogFeedback';
 import UploadedAttachedFile from './UploadedAttachedFile';
+import useHttp from '../hooks/useHttp';
 import { TEXT_FILE_EXTENSIONS } from '../constants/supportedAttachedFiles';
 import AgentToolList from '../features/agent/components/AgentToolList';
 import { AgentToolsProps } from '../features/agent/types';
@@ -44,6 +45,8 @@ type Props = BaseProps & {
 
 const ChatMessage: React.FC<Props> = (props) => {
   const { t } = useTranslation();
+  const http = useHttp();
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [isEdit, setIsEdit] = useState(false);
   const [changedContent, setChangedContent] = useState('');
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
@@ -147,7 +150,7 @@ const ChatMessage: React.FC<Props> = (props) => {
 
   return (
     <div className={twMerge(props.className, 'grid grid-cols-12 gap-2 p-3')}>
-      <div className="col-start-1 lg:col-start-2 ">
+      <div className="col-start-1 lg:col-start-2">
         {(chatContent?.sibling.length ?? 0) > 1 && (
           <div className="flex items-center justify-start text-sm lg:justify-end">
             <ButtonIcon
@@ -180,18 +183,18 @@ const ChatMessage: React.FC<Props> = (props) => {
           </div>
         )}
         {chatContent?.role === 'assistant' && (
-          <div className="min-w-[2.3rem] max-w-[2.3rem]">
+          <div className="max-w-[2.3rem] min-w-[2.3rem]">
             <img src="/images/bedrock_icon_64.png" className="rounded-sm" />
           </div>
         )}
 
-        <div className="ml-5 grow ">
+        <div className="ml-5 grow">
           {chatContent?.role === 'assistant' &&
             tools != null &&
             tools.length > 0 && (
               <div className="flex flex-col">
                 {tools.map((tools, index) => (
-                  <div key={index} className="mb-3 mt-0">
+                  <div key={index} className="mt-0 mb-3">
                     <AgentToolList
                       messageId={chatContent.id}
                       tools={tools}
@@ -200,13 +203,12 @@ const ChatMessage: React.FC<Props> = (props) => {
                   </div>
                 ))}
               </div>
-            )
-          }
+            )}
           {chatContent?.role == 'assistant' && reasoning && (
             // ReasoningCard for ReasoningContent in assistant message itself.
             <ReasoningCard
               content={reasoning}
-              className="mx-auto mb-3 mt-0 flex w-full max-w-5xl flex-col rounded-sm border border-gray bg-aws-paper-light text-aws-font-color-light/80 dark:bg-aws-paper-dark dark:text-aws-font-color-dark/80"
+              className="mx-auto mt-0 mb-3 flex w-full max-w-5xl flex-col rounded-sm border border-gray bg-aws-paper-light text-aws-font-color-light/80 dark:bg-aws-paper-dark dark:text-aws-font-color-dark/80"
             />
           )}
           {chatContent?.role === 'user' && !isEdit && (
@@ -248,20 +250,48 @@ const ChatMessage: React.FC<Props> = (props) => {
                           fileName={content.fileName ?? ''}
                           onClick={
                             // Only text file can be previewed
-                            isTextFile
-                              ? () => {
-                                  const textContent = new TextDecoder(
-                                    'utf-8'
-                                  ).decode(
-                                    Uint8Array.from(atob(content.body), (c) =>
-                                      c.charCodeAt(0)
-                                    )
-                                  ); // base64 encoded text to be decoded string
-                                  setDialogFileName(content.fileName ?? '');
-                                  setDialogFileContent(textContent);
+                            content.objectKey
+                              ? async () => {
+                                  setDialogFileName(
+                                    content.fileName ?? 'Attachment'
+                                  );
+                                  setDialogFileContent('Loading file…');
+                                  setDownloadUrl(null);
                                   setIsFileModalOpen(true);
+                                  try {
+                                    const uploadId =
+                                      content.objectKey!.split('/')[2];
+                                    const { data } = await http.getOnce<{
+                                      preview: string | null;
+                                      notice: string;
+                                      previewTruncated: boolean;
+                                      downloadUrl: string;
+                                    }>(`attachments/${uploadId}`);
+                                    setDialogFileContent(
+                                      `${data.notice}\n\n${data.preview || ''}${data.previewTruncated ? '\n\nPreview shows the first 20,000 characters. Download the full original file below.' : ''}`
+                                    );
+                                    setDownloadUrl(data.downloadUrl);
+                                  } catch {
+                                    setDialogFileContent(
+                                      'The attachment could not be opened. Close this preview and try again.'
+                                    );
+                                  }
                                 }
-                              : undefined
+                              : isTextFile
+                                ? () => {
+                                    setDownloadUrl(null);
+                                    const textContent = new TextDecoder(
+                                      'utf-8'
+                                    ).decode(
+                                      Uint8Array.from(atob(content.body), (c) =>
+                                        c.charCodeAt(0)
+                                      )
+                                    ); // base64 encoded text to be decoded string
+                                    setDialogFileName(content.fileName ?? '');
+                                    setDialogFileContent(textContent);
+                                    setIsFileModalOpen(true);
+                                  }
+                                : undefined
                           }
                         />
                       );
@@ -302,8 +332,17 @@ const ChatMessage: React.FC<Props> = (props) => {
                 widthFromContent={true}
                 title={dialogFileName ?? ''}>
                 <div className="relative flex size-auto max-h-[80vh] max-w-[80vh] flex-col">
+                  {downloadUrl && (
+                    <a
+                      className="mb-3 px-4 text-sm underline"
+                      href={downloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer">
+                      Download original file
+                    </a>
+                  )}
                   <div className="overflow-auto px-4">
-                    <pre className="whitespace-pre-wrap break-all">
+                    <pre className="break-all whitespace-pre-wrap">
                       {dialogFileContent}
                     </pre>
                   </div>

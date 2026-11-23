@@ -125,6 +125,9 @@ def get_all_conversations(
 @router.delete("/conversations")
 def remove_all_conversations(request: Request):
     """Delete all conversations"""
+    from app.attachments import delete_all_user_attachments
+
+    delete_all_user_attachments(request.state.current_user.id)
     delete_conversation_by_user_id(request.state.current_user.id)
 
 

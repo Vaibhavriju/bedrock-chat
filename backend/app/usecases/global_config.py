@@ -44,8 +44,8 @@ def get_global_available_models() -> list[str]:
 
 
 def get_default_model() -> type_model_name:
-    """Return the configured default model, falling back to claude-v3.7-sonnet."""
-    return (DEFAULT_MODEL or "").strip() or "claude-v3.7-sonnet"  # type: ignore[return-value]
+    """Return the configured default model, falling back to claude-v4.6-sonnet."""
+    return (DEFAULT_MODEL or "").strip() or "claude-v4.6-sonnet"  # type: ignore[return-value]
 
 
 def get_title_model() -> type_model_name:

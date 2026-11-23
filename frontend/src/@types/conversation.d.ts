@@ -26,6 +26,7 @@ export type AttachmentContent = {
   contentType: 'attachment';
   fileName?: string;
   body: string;
+  objectKey?: string;
 };
 
 export type ReasoningContent = {

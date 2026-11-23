@@ -191,6 +191,12 @@ export class BedrockChatStack extends cdk.Stack {
       webAclArn: cognitoWebAcl?.webAclArn,
     });
     const largeMessageBucket = new Bucket(this, "LargeMessageBucket", {
+      // Uploads go straight to S3; chat APIs only carry small, private references.
+      cors: [{ allowedMethods: [HttpMethods.POST], allowedOrigins: ["*"], allowedHeaders: ["*"] }],
+      lifecycleRules: [
+        { id: "AbandonedChatUploads", prefix: "chat-upload-staging/", expiration: Duration.days(1) },
+        { id: "UnsubmittedChatFiles", tagFilters: { "chat-upload-status": "unattached" }, expiration: Duration.days(7) },
+      ],
       encryption: BucketEncryption.S3_MANAGED,
       blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
       enforceSSL: true,
