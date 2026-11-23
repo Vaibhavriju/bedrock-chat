@@ -39,7 +39,7 @@ s3_client = boto3.client("s3", BEDROCK_REGION)
 def store_conversation(
     user_id: str, conversation: ConversationModel, threshold=THRESHOLD_LARGE_MESSAGE
 ):
-    logger.info(f"Storing conversation: {conversation.model_dump_json()}")
+    logger.info("Storing conversation id=%s", conversation.id)
     table = get_conversation_table_client(user_id)
 
     from app.attachments import bind_attachment
@@ -156,7 +156,7 @@ def find_conversation_by_user_id(user_id: str) -> list[ConversationMeta]:
             logger.warning(f"Query count exceeded {MAX_QUERY_COUNT}")
             break
 
-    logger.info(f"Found conversations: {conversations}")
+    logger.info("Found conversation count=%s", len(conversations))
     return conversations
 
 
@@ -191,7 +191,7 @@ def find_conversation_by_id(user_id: str, conversation_id: str) -> ConversationM
         bot_id=item["BotId"] if "BotId" in item else None,
         should_continue=item.get("ShouldContinue", False),
     )
-    logger.info(f"Found conversation: {conv}")
+    logger.info("Found conversation id=%s", conv.id)
     return conv
 
 
@@ -299,7 +299,7 @@ def delete_conversation_by_user_id(user_id: str):
 
 
 def change_conversation_title(user_id: str, conversation_id: str, new_title: str):
-    logger.info(f"Updating conversation title: {conversation_id} to {new_title}")
+    logger.info("Updating conversation title id=%s", conversation_id)
     table = get_conversation_table_client(user_id)
 
     try:

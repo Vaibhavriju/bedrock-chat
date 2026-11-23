@@ -104,6 +104,7 @@ export const AVAILABLE_MODEL_KEYS = [
   'mistral-large-2',
   'amazon-nova-pro',
   'amazon-nova-lite',
+  'amazon-nova-2-lite',
   'amazon-nova-micro',
   'deepseek-r1',
   'llama3-3-70b-instruct',

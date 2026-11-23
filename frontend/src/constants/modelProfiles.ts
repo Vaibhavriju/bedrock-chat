@@ -4,6 +4,7 @@ export const MODEL_PROFILES: Record<
   string,
   { label: string; description: string; rank: number }
 > = {
+  'amazon-nova-2-lite': {label: 'Fast alternative', description: 'For summaries, drafting and extracted documents. Original PDFs still require Claude in this workspace.', rank: 4},
   'claude-v4.6-sonnet': {
     label: 'Everyday & coding',
     description:

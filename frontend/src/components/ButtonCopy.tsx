@@ -24,6 +24,7 @@ const ButtonCopy: React.FC<Props> = (props) => {
 
   return (
     <ButtonIcon
+      label="Copy to clipboard"
       className={props.className}
       onClick={() => {
         copyMessage(props.text);

@@ -204,6 +204,13 @@ const useModel = (botId?: string | null, activeModels?: ActiveModels) => {
         supportReasoning: false,
       },
       {
+        modelId: 'amazon-nova-2-lite',
+        label: 'Amazon Nova 2 Lite',
+        description: 'Amazon model for fast text work, source files and extracted documents. Reasoning is off in this integration.',
+        supportMediaType: NOVA_SUPPORTED_MEDIA_TYPES,
+        supportReasoning: false,
+      },
+      {
         modelId: 'amazon-nova-lite',
         label: t('model.amazon-nova-lite.label'),
         description: t('model.amazon-nova-lite.description'),

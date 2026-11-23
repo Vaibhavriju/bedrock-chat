@@ -6,7 +6,7 @@ const translation = {
       },
     },
     app: {
-      name: 'Bedrock Chat',
+      name: 'BatteryPool AI',
       inputMessage: 'How can I Help You?',
       myBots: 'My Bots',
       discoverBots: 'Discover Bots',
@@ -124,6 +124,7 @@ const translation = {
         description:
           'A highly capable multimodal model with the best combination of accuracy, speed, and cost for a wide range of tasks.',
       },
+      'amazon-nova-2-lite': {label: 'Amazon Nova 2 Lite', description: 'Amazon model for drafting, summaries, source files and extracted documents.'},
       'amazon-nova-lite': {
         label: 'Amazon Nova Lite',
         description:

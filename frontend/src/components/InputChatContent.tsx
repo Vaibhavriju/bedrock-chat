@@ -34,6 +34,7 @@ type Props = BaseProps & {
   disabledContinue?: boolean;
   disabled?: boolean;
   placeholder?: string;
+  suggestedPrompt?: { text: string; id: number };
   dndMode?: boolean;
   canRegenerate: boolean;
   canContinue: boolean;
@@ -125,6 +126,11 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
     }, []);
 
     const { open } = useSnackbar();
+    useEffect(() => {
+      if (props.suggestedPrompt) {
+        setContent(props.suggestedPrompt.text);
+      }
+    }, [props.suggestedPrompt, setContent]);
 
     const uploads = useAttachmentUploads();
     const needsDocumentModel =
@@ -317,21 +323,24 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
           onDragOver={onDragOver}
           onDrop={onDrop}
           className={twMerge(
-            props.className,
-            'relative mb-7 flex w-11/12 flex-col gap-1 rounded-xl border border-black/10 bg-white shadow-[0_0_30px_7px] shadow-light-gray md:w-10/12 lg:w-4/6 xl:w-3/6 dark:bg-aws-ui-color-dark dark:shadow-black/35'
+            'workspace-composer relative flex w-full flex-col gap-1 rounded-2xl border border-gray/20 bg-white shadow-sm dark:bg-aws-ui-color-dark',
+            props.className
           )}>
           <div className="flex w-full">
             <Textarea
               key={`textarea-${props.isNewChat}`} // Add a key to force re-render
               className="m-1 scrollbar-thin bg-transparent pr-4"
+              label="Message BatteryPool AI"
+              hideLabel
               placeholder={
-                props.isNewChat
+                props.placeholder ??
+                (props.isNewChat
                   ? 'Ask a question, review code, or drop files here…'
-                  : t('app.inputMessage')
+                  : 'Ask a follow-up…')
               }
               disabled={props.disabled}
               noBorder
-              rows={props.isNewChat ? 3 : 1}
+              rows={props.isNewChat ? 3 : 2}
               value={content}
               onChange={setContent}
               ref={focusInputRef}
@@ -400,7 +409,7 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
               </ModalDialog>
             </div>
           )}
-          <div className="px-4 pb-3 text-xs text-dark-gray dark:text-light-gray">
+          <div className="workspace-composer-help px-4 pb-3 text-xs leading-relaxed text-dark-gray dark:text-light-gray">
             <p>
               Code, source ZIPs, PDFs, spreadsheets & slides · 25 MB/file · 10
               files · 100 MB total
@@ -479,7 +488,7 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
                   {item.error && (
                     <p
                       role="alert"
-                      className="text-red dark:text-red mt-2 text-xs">
+                      className="mt-2 text-xs text-red dark:text-red">
                       {item.error}
                     </p>
                   )}

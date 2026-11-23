@@ -149,8 +149,12 @@ const ChatMessage: React.FC<Props> = (props) => {
   );
 
   return (
-    <div className={twMerge(props.className, 'grid grid-cols-12 gap-2 p-3')}>
-      <div className="col-start-1 lg:col-start-2">
+    <div
+      className={twMerge(
+        props.className,
+        'workspace-message relative mx-auto w-full max-w-4xl px-4 py-5 sm:px-6 sm:py-7'
+      )}>
+      <div className="mb-2 ml-12">
         {(chatContent?.sibling.length ?? 0) > 1 && (
           <div className="flex items-center justify-start text-sm lg:justify-end">
             <ButtonIcon
@@ -176,19 +180,24 @@ const ChatMessage: React.FC<Props> = (props) => {
         )}
       </div>
 
-      <div className="order-first col-span-12 flex lg:order-0 lg:col-span-8 lg:col-start-3">
+      <div className="flex min-w-0 items-start gap-3">
         {chatContent?.role === 'user' && (
-          <div className="h-min rounded-sm bg-aws-sea-blue-light p-2 text-xl text-white dark:bg-aws-sea-blue-dark">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-aws-sea-blue-light/10 text-lg text-aws-sea-blue-light dark:text-aws-sea-blue-dark">
             <PiUserFill />
           </div>
         )}
         {chatContent?.role === 'assistant' && (
-          <div className="max-w-[2.3rem] min-w-[2.3rem]">
-            <img src="/images/bedrock_icon_64.png" className="rounded-sm" />
+          <div
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-aws-sea-blue-light text-sm font-semibold text-white"
+            aria-label="BatteryPool AI">
+            BP
           </div>
         )}
 
-        <div className="ml-5 grow">
+        <div className="min-w-0 flex-1">
+          <p className="mb-2 text-sm font-semibold opacity-65">
+            {chatContent?.role === 'user' ? 'You' : 'BatteryPool AI'}
+          </p>
           {chatContent?.role === 'assistant' &&
             tools != null &&
             tools.length > 0 && (
@@ -238,7 +247,7 @@ const ChatMessage: React.FC<Props> = (props) => {
               {chatContent.content.some(
                 (content) => content.contentType === 'attachment'
               ) && (
-                <div key="files" className="my-2 flex">
+                <div key="files" className="my-2 flex flex-wrap gap-2">
                   {chatContent.content.map((content, idx) => {
                     if (content.contentType === 'attachment') {
                       const isTextFile = TEXT_FILE_EXTENSIONS.some((ext) =>
@@ -328,6 +337,7 @@ const ChatMessage: React.FC<Props> = (props) => {
               </ModalDialog>
               <ModalDialog
                 isOpen={isFileModalOpen}
+                showCloseIcon
                 onClose={() => setIsFileModalOpen(false)}
                 widthFromContent={true}
                 title={dialogFileName ?? ''}>
@@ -384,8 +394,8 @@ const ChatMessage: React.FC<Props> = (props) => {
         </div>
       </div>
 
-      <div className="col-span-2 col-start-11">
-        <div className="flex flex-col items-end lg:items-start">
+      <div className="mt-3 ml-12">
+        <div className="flex items-center">
           {chatContent?.role === 'user' && !isEdit && (
             <ButtonIcon
               className="text-dark-gray dark:text-light-gray"

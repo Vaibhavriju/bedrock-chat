@@ -151,6 +151,8 @@ BEDROCK_PRICING = {
             "cache_write_input": 0.0008,
             "cache_read_input": 0.0002,
         },
+        # Nova 2 Lite standard global token estimates; reconcile actual AWS billing.
+        "amazon-nova-2-lite": {"input": 0.0003, "output": 0.0025},
         "amazon-nova-lite": {
             "input": 0.00006,
             "output": 0.00024,
@@ -243,6 +245,8 @@ BEDROCK_PRICING = {
             "cache_write_input": 0.0008,
             "cache_read_input": 0.0002,
         },
+        # Nova 2 Lite standard global token estimates; reconcile actual AWS billing.
+        "amazon-nova-2-lite": {"input": 0.0003, "output": 0.0025},
         "amazon-nova-lite": {
             "input": 0.00006,
             "output": 0.00024,
@@ -364,6 +368,8 @@ BEDROCK_PRICING = {
             "cache_write_input": 0.0008,
             "cache_read_input": 0.0002,
         },
+        # Nova 2 Lite standard global token estimates; reconcile actual AWS billing.
+        "amazon-nova-2-lite": {"input": 0.0003, "output": 0.0025},
         "amazon-nova-lite": {
             "input": 0.00006,
             "output": 0.00024,

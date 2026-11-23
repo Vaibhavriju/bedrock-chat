@@ -204,7 +204,8 @@ const Drawer: React.FC<Props> = (props) => {
   const navigate = useNavigate();
   const { getPageLabel } = usePageLabel();
   const { opened, switchOpen, drawerOptions } = useDrawer();
-  const { conversations, pinnedBots, starredBots, recentlyUsedUnstarredBots } = props;
+  const { conversations, pinnedBots, starredBots, recentlyUsedUnstarredBots } =
+    props;
 
   const location = useLocation();
 
@@ -291,17 +292,34 @@ const Drawer: React.FC<Props> = (props) => {
 
   return (
     <>
-      <div className="relative h-full overflow-y-auto bg-aws-squid-ink-light scrollbar-thin dark:bg-aws-ui-color-dark">
+      <div className="relative h-full scrollbar-thin overflow-y-auto bg-white dark:bg-aws-ui-color-dark">
         <nav
           className={`lg:visible lg:w-64 ${
             opened ? 'visible w-64' : 'invisible w-0'
-          } text-sm  text-white transition-width`}>
+          } text-sm text-white transition-width`}>
+          {!logoSrc && (
+            <button
+              type="button"
+              onClick={onClickLogo}
+              className="workspace-brand flex w-full items-center gap-3 px-5 py-6 text-left"
+              aria-label="BatteryPool AI home">
+              <span className="flex size-10 items-center justify-center rounded-xl bg-aws-sea-blue-light font-bold text-white">
+                BP
+              </span>
+              <span>
+                <span className="block text-base font-semibold">
+                  BatteryPool AI
+                </span>
+                <span className="block text-xs opacity-55">Team workspace</span>
+              </span>
+            </button>
+          )}
           {logoSrc && (
-            <div className="sticky top-0 z-10 flex items-center justify-center border-b border-white/10 bg-aws-squid-ink-light px-4 py-6 dark:bg-aws-squid-ink-dark">
+            <div className="sticky top-0 z-10 flex items-center justify-center border-b border-white/10 bg-white px-4 py-6 dark:bg-aws-paper-dark">
               <button
                 type="button"
                 onClick={onClickLogo}
-                className="flex w-full items-center justify-center focus:outline-hidden focus:ring-2 focus:ring-white/60 focus:ring-offset-2 focus:ring-offset-transparent">
+                className="flex w-full items-center justify-center focus:ring-2 focus:ring-white/60 focus:ring-offset-2 focus:ring-offset-transparent focus:outline-hidden">
                 <img
                   src={logoSrc}
                   alt={t('app.name')}
@@ -342,29 +360,29 @@ const Drawer: React.FC<Props> = (props) => {
               )}
 
               {drawerOptions.show.pinnedBots &&
-                pinnedBots?.filter((bot) => bot.available).length ? (
-                  <ExpandableDrawerGroup
-                    label={t('app.pinnedBots')}
-                    className="border-t bg-aws-squid-ink-light pt-1 dark:bg-aws-squid-ink-dark">
-                    {pinnedBots
-                      .filter((bot) => bot.available)
-                      .map((bot) => (
-                        <DrawerItem
-                          key={bot.id}
-                          isActive={botId === bot.id && !conversationId}
-                          to={`/bot/${bot.id}`}
-                          icon={<IconPinnedBot showAlways />}
-                          labelComponent={bot.title}
-                          onClick={onClickNewBotChat}
-                        />
-                      ))}
-                  </ExpandableDrawerGroup>
-                ) : null}
+              pinnedBots?.filter((bot) => bot.available).length ? (
+                <ExpandableDrawerGroup
+                  label={t('app.pinnedBots')}
+                  className="border-t bg-white pt-1 dark:bg-aws-paper-dark">
+                  {pinnedBots
+                    .filter((bot) => bot.available)
+                    .map((bot) => (
+                      <DrawerItem
+                        key={bot.id}
+                        isActive={botId === bot.id && !conversationId}
+                        to={`/bot/${bot.id}`}
+                        icon={<IconPinnedBot showAlways />}
+                        labelComponent={bot.title}
+                        onClick={onClickNewBotChat}
+                      />
+                    ))}
+                </ExpandableDrawerGroup>
+              ) : null}
 
               {drawerOptions.show.starredBots && (
                 <ExpandableDrawerGroup
                   label={t('app.starredBots')}
-                  className="border-t bg-aws-squid-ink-light pt-1 dark:bg-aws-squid-ink-dark">
+                  className="border-t bg-white pt-1 dark:bg-aws-paper-dark">
                   {starredBots === undefined && (
                     <div className="flex flex-col gap-2 p-2">
                       <Skeleton className="h-10 w-full bg-aws-sea-blue-light/50 dark:bg-aws-sea-blue-dark/50" />
@@ -411,7 +429,7 @@ const Drawer: React.FC<Props> = (props) => {
               {drawerOptions.show.recentlyUsedBots && (
                 <ExpandableDrawerGroup
                   label={t('app.recentlyUsedBots')}
-                  className="border-t bg-aws-squid-ink-light pt-1 dark:bg-aws-squid-ink-dark ">
+                  className="border-t bg-white pt-1 dark:bg-aws-paper-dark">
                   {recentlyUsedUnstarredBots === undefined && (
                     <div className="flex flex-col gap-2 p-2">
                       <Skeleton className="h-10 w-full bg-aws-sea-blue-light/50 dark:bg-aws-sea-blue-dark/50" />
@@ -459,7 +477,7 @@ const Drawer: React.FC<Props> = (props) => {
                 <ExpandableDrawerGroup
                   label={t('app.conversationHistory')}
                   className={twMerge(
-                    'border-t bg-aws-squid-ink-light pt-1 dark:bg-aws-squid-ink-dark',
+                    'border-t bg-white pt-1 dark:bg-aws-paper-dark',
                     props.isAdmin ? 'mb-20' : 'mb-10'
                   )}>
                   {conversations === undefined && (
@@ -482,7 +500,9 @@ const Drawer: React.FC<Props> = (props) => {
                         generatedTitle={idx === generateTitleIndex}
                         updateTitle={props.updateConversationTitle}
                         onClick={closeSmallDrawer}
-                        onDelete={() => props.onDeleteConversation(conversation)}
+                        onDelete={() =>
+                          props.onDeleteConversation(conversation)
+                        }
                       />
                     ))}
 
@@ -505,7 +525,9 @@ const Drawer: React.FC<Props> = (props) => {
 
           {isAdminPanel && (
             <>
-              <div className="px-2 py-1 italic">{t('app.adminConsoles')}</div>
+              <div className="px-4 py-3 text-sm font-semibold opacity-60">
+                {t('app.adminConsoles')}
+              </div>
               <DrawerItem
                 className="w-60"
                 isActive={location.pathname === '/admin/shared-bot-analytics'}
@@ -522,6 +544,14 @@ const Drawer: React.FC<Props> = (props) => {
                 labelComponent={getPageLabel('/admin/api-management')}
                 onClick={closeSmallDrawer}
               />
+              <DrawerItem
+                className="w-60"
+                isActive={location.pathname === '/admin/models'}
+                icon={<PiRobot />}
+                to="/admin/models"
+                labelComponent="Model catalog"
+                onClick={closeSmallDrawer}
+              />
             </>
           )}
 
@@ -529,7 +559,7 @@ const Drawer: React.FC<Props> = (props) => {
             className={twMerge(
               opened ? 'w-64' : 'w-0',
               props.isAdmin ? 'h-20' : 'h-10',
-              'fixed -bottom-2 z-50 mb-2 flex flex-col items-start border-t bg-aws-squid-ink-light transition-width dark:bg-aws-ui-color-dark lg:w-64'
+              'fixed -bottom-2 z-50 mb-2 flex flex-col items-start border-t bg-white transition-width lg:w-64 dark:bg-aws-ui-color-dark'
             )}>
             {props.isAdmin && !isAdminPanel && (
               <DrawerItem
@@ -566,7 +596,7 @@ const Drawer: React.FC<Props> = (props) => {
         ref={smallDrawer}
         className={`lg:hidden ${opened ? 'visible' : 'hidden'}`}>
         <ButtonIcon
-          className="fixed left-64 top-0 z-50 text-white"
+          className="fixed top-0 left-64 z-50 text-white"
           onClick={switchOpen}>
           <PiX />
         </ButtonIcon>

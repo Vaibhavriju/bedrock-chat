@@ -125,6 +125,7 @@ const translation: typeof en = {
         description:
           '精度、速度、コストのバランスが最も優れた高性能マルチモーダルモデル',
       },
+      'amazon-nova-2-lite': {label: 'Amazon Nova 2 Lite', description: '要約、文章作成、コード、抽出済みドキュメント向けの Amazon モデル。'},
       'amazon-nova-lite': {
         label: 'Amazon Nova Lite',
         description:

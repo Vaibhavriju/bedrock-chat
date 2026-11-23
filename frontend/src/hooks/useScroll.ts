@@ -16,7 +16,7 @@ const useScroll = (conversationId?: string) => {
     }
     const listener = () => {
       // Enable auto-scroll when scrolled to the bottom
-      if (elem.scrollTop + elem.clientHeight === elem.scrollHeight) {
+      if (elem.scrollHeight - elem.scrollTop - elem.clientHeight <= 48) {
         setDisabled(false);
       } else {
         setDisabled(true);

@@ -30,6 +30,7 @@ type_model_name = Literal[
     # New Amazon Nova models
     "amazon-nova-pro",
     "amazon-nova-lite",
+    "amazon-nova-2-lite",
     "amazon-nova-micro",
     # DeepSeek models
     "deepseek-r1",

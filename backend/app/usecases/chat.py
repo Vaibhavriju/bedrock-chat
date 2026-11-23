@@ -66,13 +66,18 @@ def prepare_conversation(
     user: User,
     chat_input: ChatInput,
 ) -> tuple[str, ConversationModel, BotModel | None]:
+    from app.usecases.global_config import get_global_available_models
+
+    enabled_models = get_global_available_models()
+    if enabled_models and chat_input.message.model not in enabled_models:
+        raise PermissionError("This model is not enabled in your workspace. Ask an administrator to review model access.")
     current_time = get_current_time()
     bot = None
 
     try:
         # Fetch existing conversation
         conversation = find_conversation_by_id(user.id, chat_input.conversation_id)
-        logger.info(f"Found conversation: {conversation}")
+        logger.info("Found conversation id=%s", conversation.id)
         parent_id = chat_input.message.parent_message_id
         if chat_input.message.parent_message_id == "system" and chat_input.bot_id:
             # The case editing first user message and use bot

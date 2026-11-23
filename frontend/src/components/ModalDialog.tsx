@@ -72,6 +72,7 @@ const ModalDialog: React.FC<Props> = (props) => {
                   )}
                   {props.showCloseIcon && (
                     <ButtonIcon
+                      label="Close dialog"
                       className="absolute right-2 top-2"
                       onClick={onClose}>
                       <PiX />

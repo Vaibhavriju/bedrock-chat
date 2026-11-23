@@ -17,17 +17,18 @@ const DrawerItem: React.FC<Props> = (props) => {
   return (
     <Link
       className={twMerge(
-        'group mx-2 my-1 flex h-10 items-center  rounded-sm px-2',
+        'group mx-2 my-1 flex h-10 items-center rounded-xl px-3',
         (props.isActive ?? true)
-          ? 'bg-aws-sea-blue-light dark:bg-aws-sea-blue-dark'
-          : 'hover:bg-aws-sea-blue-hover-light dark:hover:bg-aws-paper-dark',
+          ? 'bg-aws-sea-blue-light/10 text-aws-sea-blue-light dark:text-aws-sea-blue-dark'
+          : 'hover:bg-aws-sea-blue-light/5 dark:hover:bg-aws-paper-dark',
         props.className
       )}
+      aria-current={props.isActive ? 'page' : undefined}
       to={props.to}
       onClick={props.onClick}>
       <div className={`flex h-8 max-h-5 w-full justify-start overflow-hidden`}>
         <div className="mr-2 pt-0.5">{props.icon}</div>
-        <div className="relative flex-1 text-ellipsis break-all">
+        <div className="relative flex-1 break-all text-ellipsis">
           {props.labelComponent}
           {(props.isBlur ?? true) && (
             <div

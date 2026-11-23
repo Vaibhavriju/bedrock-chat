@@ -23,6 +23,7 @@
 
 @theme {
   --font-*: initial;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* v3 では red / gray / yellow をパレットごと単色で上書きしていたため、既定のパレットを無効化する */
   --color-red-*: initial;
@@ -44,31 +45,31 @@
     }
   }
 
-  --color-aws-squid-ink-light: #232f3e;
+  --color-aws-squid-ink-light: #172b4d;
   --color-aws-squid-ink-dark: #171717;
 
-  --color-aws-sea-blue-light: #005276;
-  --color-aws-sea-blue-dark: #757575;
+  --color-aws-sea-blue-light: #2563eb;
+  --color-aws-sea-blue-dark: #60a5fa;
 
-  --color-aws-sea-blue-hover-light: #003550;
-  --color-aws-sea-blue-hover-dark: #5b5b5b;
+  --color-aws-sea-blue-hover-light: #1d4ed8;
+  --color-aws-sea-blue-hover-dark: #93c5fd;
 
-  --color-aws-aqua: #007faa;
+  --color-aws-aqua: #2563eb;
   --color-aws-lab: #38ef7d;
   --color-aws-mist: #9ffcea;
 
-  --color-aws-font-color-light: #232f3e;
-  --color-aws-font-color-dark: #cacaca;
+  --color-aws-font-color-light: #172b4d;
+  --color-aws-font-color-dark: #e2e8f0;
   --color-aws-font-color-gray: #909193;
   --color-aws-font-color-blue: #276cc6;
 
   --color-aws-font-color-white-light: #ffffff;
   --color-aws-font-color-white-dark: #ececec;
 
-  --color-aws-ui-color-dark: #151515;
+  --color-aws-ui-color-dark: #151e30;
 
-  --color-aws-paper-light: #f1f3f3;
-  --color-aws-paper-dark: #212121;
+  --color-aws-paper-light: #f7f9fc;
+  --color-aws-paper-dark: #101725;
 
   --color-red: #dc2626;
   --color-light-red: #fee2e2;
@@ -118,4 +119,32 @@
   word-break: break-word !important;
   overflow-wrap: break-word !important;
   max-width: 100% !important;
+}
+
+:root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body { margin: 0; -webkit-font-smoothing: antialiased; }
+:where(button, a, input, textarea, select):focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; }
+.workspace-chat-header { background: color-mix(in srgb, var(--color-aws-paper-light) 95%, transparent); }
+.dark .workspace-chat-header { background: var(--color-aws-paper-dark); }
+.workspace-chat-header > div:first-child { min-width: 0; }
+.workspace-sidebar nav { padding-bottom: 7rem; }
+.workspace-sidebar nav > div[class*="border-t"] { border-color: color-mix(in srgb, var(--color-gray) 20%, transparent); }
+.workspace-composer { transition: border-color 150ms, box-shadow 150ms; }
+.workspace-composer:focus-within { border-color: #93b4f5; box-shadow: 0 0 0 3px rgb(37 99 235 / 7%); }
+.workspace-composer textarea { padding: 1rem; line-height: 1.65; font-size: 1rem; background: transparent; }
+.workspace-messages { scrollbar-gutter: stable; }
+.workspace-message .prose { max-width: none; line-height: 1.8; }
+.workspace-message .prose > :first-child { margin-top: 0; }
+.workspace-message table { display: block; overflow-x: auto; }
+.workspace-model-label { max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 639px) {
+ .workspace-welcome { padding-top: 0.5rem; }
+ .workspace-model-label { position: static; max-width: 60%; font-size: 0.75rem; }
+ .workspace-chat-header { gap: 0.5rem; }
+ .workspace-chat-header > div:first-child { width: auto; }
+ .workspace-composer-help > p + p { display: none; }
+ .workspace-composer textarea { padding: 0.75rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+ *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

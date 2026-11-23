@@ -4,9 +4,11 @@ import { create } from 'zustand';
 import i18next from 'i18next';
 import { StreamingEvent } from './xstates/streaming';
 import { PostStreamingStatus } from '../constants';
+import { makeStreamFrames } from '../utils/streamFrames';
 
 const WS_ENDPOINT: string = import.meta.env.VITE_APP_WS_ENDPOINT;
-const CHUNK_SIZE = 32 * 1024; //32KB
+const CONNECT_TIMEOUT_MS = 15000;
+const IDLE_TIMEOUT_MS = 120000;
 
 const usePostMessageStreaming = create<{
   post: (params: {
@@ -19,29 +21,45 @@ const usePostMessageStreaming = create<{
   return {
     errorDetail: null,
     post: async ({ input, handleStreamingEvent }) => {
+      set({ errorDetail: null });
       handleStreamingEvent({ type: 'wakeup' });
 
       const token = (await fetchAuthSession()).tokens?.idToken?.toString();
+      if (!token) {
+        const detail = 'Your session has expired. Sign in again to continue.';
+        set({errorDetail: detail});
+        throw new Error(detail);
+      }
       const payloadString = JSON.stringify({
         ...input,
         token,
       });
 
-      // chunking
-      const chunkedPayloads: string[] = [];
-      const chunkCount = Math.ceil(payloadString.length / CHUNK_SIZE);
-      for (let i = 0; i < chunkCount; i++) {
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, payloadString.length);
-        chunkedPayloads.push(payloadString.substring(start, end));
-      }
+      const chunkedPayloads = makeStreamFrames(payloadString, PostStreamingStatus.BODY);
 
       let receivedCount = 0;
       return new Promise<void>((resolve, reject) => {
         const ws = new WebSocket(WS_ENDPOINT);
+        let settled = false;
+        let idleTimer: ReturnType<typeof setTimeout>;
+        const totalTimer = setTimeout(() => fail('This response exceeded the time limit. Please try a smaller request.'), 15 * 60 * 1000);
+        const clearTimers = () => { clearTimeout(idleTimer); clearTimeout(totalTimer); };
+        const fail = (detail: string) => {
+          if (settled) {return;}
+          settled = true;
+          clearTimers();
+          set({ errorDetail: detail });
+          reject(new Error(detail));
+          ws.close();
+        };
+        const resetIdle = (timeout = IDLE_TIMEOUT_MS) => {
+          clearTimeout(idleTimer);
+          idleTimer = setTimeout(() => fail('The response connection timed out. Retry when your connection is stable.'), timeout);
+        };
+        resetIdle(CONNECT_TIMEOUT_MS);
 
         ws.onopen = () => {
-          console.log('[FRONTEND_WS] WebSocket connection opened');
+          resetIdle();
           ws.send(
             JSON.stringify({
               step: PostStreamingStatus.START,
@@ -52,7 +70,8 @@ const usePostMessageStreaming = create<{
 
         ws.onmessage = (message) => {
           try {
-            console.log('[FRONTEND_WS] Received message:', message.data);
+            if (settled) {return;}
+            resetIdle();
             if (
               message.data === '' ||
               message.data === 'Message sent.' ||
@@ -63,15 +82,7 @@ const usePostMessageStreaming = create<{
             ) {
               return;
             } else if (message.data === 'Session started.') {
-              chunkedPayloads.forEach((chunk, index) => {
-                ws.send(
-                  JSON.stringify({
-                    step: PostStreamingStatus.BODY,
-                    index,
-                    part: chunk,
-                  })
-                );
-              });
+              chunkedPayloads.forEach((frame) => ws.send(frame));
               return;
             } else if (message.data === 'Message part received.') {
               receivedCount++;
@@ -87,10 +98,10 @@ const usePostMessageStreaming = create<{
             }
 
             const data = JSON.parse(message.data);
-            console.log('[FRONTEND_WS] Parsed data:', data);
+
 
             if (data.status) {
-              console.log('[FRONTEND_WS] Processing status:', data.status);
+
               switch (data.status) {
                 case PostStreamingStatus.AGENT_THINKING: {
                   Object.entries(data.log).forEach(([toolUseId, toolInfo]) => {
@@ -134,41 +145,15 @@ const usePostMessageStreaming = create<{
                   });
                   break;
                 case PostStreamingStatus.STREAMING_END:
-                  console.log(
-                    '[FRONTEND_WS] Received STREAMING_END, ending thinking state'
-                  );
-                  try {
-                    console.log(
-                      '[FRONTEND_WS] Calling handleStreamingEvent goodbye'
-                    );
-                    handleStreamingEvent({
-                      type: 'goodbye',
-                    });
-                    console.log(
-                      '[FRONTEND_WS] handleStreamingEvent goodbye completed'
-                    );
-
-                    console.log('[FRONTEND_WS] Closing WebSocket');
-                    ws.close();
-                    console.log('[FRONTEND_WS] WebSocket closed successfully');
-                  } catch (error) {
-                    console.error(
-                      '[FRONTEND_WS] Error in STREAMING_END handling:',
-                      error
-                    );
-                    ws.close();
-                  }
+                  handleStreamingEvent({type: 'goodbye'});
+                  settled = true;
+                  clearTimers();
+                  resolve();
+                  ws.close();
                   break;
                 case PostStreamingStatus.ERROR:
-                  ws.close();
-                  console.error(data);
-                  set({
-                    errorDetail:
-                      data.reason || i18next.t('error.predict.invalidResponse'),
-                  });
-                  throw new Error(
-                    data.reason || i18next.t('error.predict.invalidResponse')
-                  );
+                  fail(data.reason || i18next.t('error.predict.invalidResponse'));
+                  break;
                 default:
                   handleStreamingEvent({
                     type: 'reset',
@@ -176,32 +161,15 @@ const usePostMessageStreaming = create<{
                   break;
               }
             } else {
-              ws.close();
-              console.error(data);
               throw new Error(i18next.t('error.predict.invalidResponse'));
             }
-          } catch (e) {
-            console.error('[FRONTEND_WS] Error in onmessage handler:', e);
-            console.error(
-              '[FRONTEND_WS] Message data that caused error:',
-              message.data
-            );
-            reject(i18next.t('error.predict.general'));
+          } catch {
+            fail(i18next.t('error.predict.general'));
           }
         };
-
-        ws.onerror = (e) => {
-          console.error('[FRONTEND_WS] WebSocket error:', e);
-          ws.close();
-          reject(i18next.t('error.predict.general'));
-        };
-        ws.onclose = (event) => {
-          console.log(
-            '[FRONTEND_WS] WebSocket closed:',
-            event.code,
-            event.reason
-          );
-          resolve();
+        ws.onerror = () => fail('Could not connect to the response service. Check your connection and retry.');
+        ws.onclose = () => {
+          if (!settled) {fail('The connection ended before the response completed. Retry to generate a complete answer.');}
         };
       });
     },

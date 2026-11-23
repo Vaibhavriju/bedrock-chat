@@ -53,6 +53,7 @@ import Skeleton from '../components/Skeleton.tsx';
 import { twMerge } from 'tailwind-merge';
 import ButtonStar from '../components/ButtonStar.tsx';
 import MenuBot from '../components/MenuBot.tsx';
+import ChatWelcome from '../components/ChatWelcome';
 
 // ChatMessageWithRelatedDocuments component moved outside to prevent re-creation on every render
 type ChatMessageWithRelatedDocumentsProps = {
@@ -70,81 +71,99 @@ type ChatMessageWithRelatedDocumentsProps = {
   onSubmitFeedback?: (messageId: string, feedback: PutFeedbackRequest) => void;
 };
 
-const ChatMessageWithRelatedDocuments: React.FC<ChatMessageWithRelatedDocumentsProps> = React.memo((props) => {
-  const { t } = useTranslation();
-  const { chatContent: message } = props;
+const ChatMessageWithRelatedDocuments: React.FC<ChatMessageWithRelatedDocumentsProps> =
+  React.memo((props) => {
+    const { t } = useTranslation();
+    const { chatContent: message } = props;
 
-  const isAgentThinking = useMemo(() => {
-    switch (props.streamingStateValue) {
-      case StreamingState.STREAMING:
-      case StreamingState.LEAVING:
-        return props.isStreaming;
-      default:
-        return false;
-    }
-  }, [props.streamingStateValue, props.isStreaming]);
-
-  const reasoning = useMemo(() => (
-    isAgentThinking ? props.streamingReasoning : ''
-  ), [isAgentThinking, props.streamingReasoning]);
-
-  const tools: AgentToolsProps[] | undefined = useMemo(() => {
-    if (isAgentThinking) {
-      if (props.streamingTools.length > 0) {
-        return props.streamingTools;
+    const isAgentThinking = useMemo(() => {
+      switch (props.streamingStateValue) {
+        case StreamingState.STREAMING:
+        case StreamingState.LEAVING:
+          return props.isStreaming;
+        default:
+          return false;
       }
+    }, [props.streamingStateValue, props.isStreaming]);
 
-      if (props.botHasAgent) {
-        return [{ thought: t('agent.progress.label'), tools: {} }];
-      }
+    const reasoning = useMemo(
+      () => (isAgentThinking ? props.streamingReasoning : ''),
+      [isAgentThinking, props.streamingReasoning]
+    );
 
-      if (props.botHasKnowledge) {
-        return [{ thought: t('bot.label.retrievingKnowledge'), tools: {} }];
-      }
-
-      return undefined;
-    } else {
-      if (props.botHasKnowledge) {
-        const pseudoToolUseId = message.id;
-        const relatedDocumentsOfVectorSearch = getRelatedDocumentsOfToolUse(
-          props.relatedDocuments,
-          pseudoToolUseId
-        );
-        if (relatedDocumentsOfVectorSearch != null && relatedDocumentsOfVectorSearch.length > 0) {
-          return [{
-            tools: {
-              [pseudoToolUseId]: {
-                name: 'knowledge_base_tool',
-                status: 'success',
-                input: {},
-                relatedDocuments: relatedDocumentsOfVectorSearch,
-              },
-            },
-          }];
+    const tools: AgentToolsProps[] | undefined = useMemo(() => {
+      if (isAgentThinking) {
+        if (props.streamingTools.length > 0) {
+          return props.streamingTools;
         }
+
+        if (props.botHasAgent) {
+          return [{ thought: t('agent.progress.label'), tools: {} }];
+        }
+
+        if (props.botHasKnowledge) {
+          return [{ thought: t('bot.label.retrievingKnowledge'), tools: {} }];
+        }
+
+        return undefined;
+      } else {
+        if (props.botHasKnowledge) {
+          const pseudoToolUseId = message.id;
+          const relatedDocumentsOfVectorSearch = getRelatedDocumentsOfToolUse(
+            props.relatedDocuments,
+            pseudoToolUseId
+          );
+          if (
+            relatedDocumentsOfVectorSearch != null &&
+            relatedDocumentsOfVectorSearch.length > 0
+          ) {
+            return [
+              {
+                tools: {
+                  [pseudoToolUseId]: {
+                    name: 'knowledge_base_tool',
+                    status: 'success',
+                    input: {},
+                    relatedDocuments: relatedDocumentsOfVectorSearch,
+                  },
+                },
+              },
+            ];
+          }
+        }
+        return undefined;
       }
-      return undefined;
-    }
-  }, [isAgentThinking, props.streamingTools, props.botHasAgent, props.botHasKnowledge, message.id, props.relatedDocuments, t]);
+    }, [
+      isAgentThinking,
+      props.streamingTools,
+      props.botHasAgent,
+      props.botHasKnowledge,
+      message.id,
+      props.relatedDocuments,
+      t,
+    ]);
 
-  const relatedDocumentsForCitation = useMemo(
-    () => isAgentThinking ? props.streamingRelatedDocuments : props.relatedDocuments,
-    [isAgentThinking, props.streamingRelatedDocuments, props.relatedDocuments]
-  );
+    const relatedDocumentsForCitation = useMemo(
+      () =>
+        isAgentThinking
+          ? props.streamingRelatedDocuments
+          : props.relatedDocuments,
+      [isAgentThinking, props.streamingRelatedDocuments, props.relatedDocuments]
+    );
 
-  return (
-    <ChatMessage
-      tools={tools}
-      reasoning={reasoning}
-      chatContent={message}
-      isStreaming={props.isStreaming}
-      relatedDocuments={relatedDocumentsForCitation}
-      onChangeMessageId={props.onChangeMessageId}
-      onSubmit={props.onSubmit}
-      onSubmitFeedback={props.onSubmitFeedback}
-    />
-  );
-});
+    return (
+      <ChatMessage
+        tools={tools}
+        reasoning={reasoning}
+        chatContent={message}
+        isStreaming={props.isStreaming}
+        relatedDocuments={relatedDocumentsForCitation}
+        onChangeMessageId={props.onChangeMessageId}
+        onSubmit={props.onSubmit}
+        onSubmitFeedback={props.onSubmitFeedback}
+      />
+    );
+  });
 
 // Default model activation settings when no bot is selected
 const defaultActiveModels: ActiveModels = (() => {
@@ -382,6 +401,10 @@ const ChatPage: React.FC = () => {
 
   const { disabledImageUpload } = useModel();
   const [dndMode, setDndMode] = useState(false);
+  const [suggestedPrompt, setSuggestedPrompt] = useState<{
+    text: string;
+    id: number;
+  }>();
   const onDragOver: React.DragEventHandler<HTMLDivElement> = useCallback(
     (e) => {
       if (!disabledImageUpload) {
@@ -470,15 +493,15 @@ const ChatPage: React.FC = () => {
 
   return (
     <div
-      className="relative flex h-full flex-1 flex-col"
+      className="workspace-chat relative flex h-full min-h-0 flex-1 flex-col"
       onDragOver={onDragOver}
       onDrop={endDnd}
       onDragEnd={endDnd}>
-      <div className="flex-1 overflow-hidden">
-        <div className="sticky top-0 z-10 mb-1.5 flex h-14 w-full items-center justify-between border-b border-gray bg-aws-paper-light p-2 dark:bg-aws-paper-dark">
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <div className="workspace-chat-header sticky top-0 z-10 flex h-16 w-full items-center justify-between border-b border-gray/15 px-4 sm:px-6">
           <div className="flex w-full justify-between">
             <div className="p-2">
-              <div className="mr-10 flex items-center whitespace-nowrap font-bold">
+              <div className="mr-10 flex items-center font-bold whitespace-nowrap">
                 {isLoadingBot ? (
                   <Skeleton className="h-5 w-32" />
                 ) : (
@@ -487,7 +510,7 @@ const ChatPage: React.FC = () => {
                       botSharedStatus={bot?.sharedStatus}
                       className="mr-1 text-aws-aqua"
                     />
-                    {pageTitle}
+                    {bot ? pageTitle : 'BatteryPool AI'}
                   </>
                 )}
               </div>
@@ -548,49 +571,41 @@ const ChatPage: React.FC = () => {
             )}
           </div>
           {getPostedModel() && (
-            <div className="absolute right-2 top-10 text-xs text-dark-gray dark:text-light-gray">
-              model: {getPostedModel()}
+            <div className="workspace-model-label absolute top-5 right-5 rounded-full bg-aws-sea-blue-light/5 px-3 py-1 text-xs text-dark-gray dark:text-light-gray">
+              {getPostedModel()
+                ?.replace('claude-v', 'Claude ')
+                .replace(/-/g, ' ')}
             </div>
           )}
         </div>
-        <section className="relative size-full flex-1 overflow-auto pb-9">
+        <section className="relative h-[calc(100%-4rem)] min-h-0 overflow-hidden">
           <div className="h-full">
             <div
               id="messages"
               role="presentation"
-              className="flex h-full flex-col overflow-auto pb-16">
+              className="workspace-messages flex h-full flex-col overflow-auto pb-6">
               {messages?.length === 0 ? (
-                <div className="relative mb-[45vh]  flex w-full flex-col items-center justify-center">
+                <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col items-center justify-center px-5 py-8 sm:py-12">
                   {!loadingConversation && (
-                    <SwitchBedrockModel
-                      className="mb-6 mt-3 w-min"
-                      activeModels={activeModels}
-                      botId={botId}
-                    />
+                    <>
+                      <ChatWelcome
+                        title={bot ? pageTitle : undefined}
+                        description={description}
+                        onChoosePrompt={(text) => {
+                          setSuggestedPrompt({ text, id: Date.now() });
+                          focusInputRef.current?.focus();
+                        }}
+                      />
+                      <SwitchBedrockModel
+                        className="mt-6"
+                        activeModels={activeModels}
+                        botId={botId}
+                      />
+                    </>
                   )}
-                  <div className="px-20 text-center">
-                    <div className="text-lg font-bold">
-                      {isLoadingBot && botId && (
-                        <Skeleton className="h-5 w-32" />
-                      )}
-                      {!isLoadingBot && bot && (
-                        <div className="flex items-baseline justify-center">
-                          <IconPinnedBot
-                            botSharedStatus={bot?.sharedStatus}
-                            className="mr-1 shrink-0 text-aws-aqua"
-                          />
-                          <div>{pageTitle}</div>
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-3 text-xs text-dark-gray dark:text-light-gray">
-                      {isLoadingBot ? (
-                        <Skeleton className="mt-1 h-3 w-64" />
-                      ) : (
-                        description
-                      )}
-                    </div>
-                  </div>
+                  {loadingConversation && (
+                    <Skeleton className="h-32 w-full max-w-lg" />
+                  )}
                 </div>
               ) : (
                 <>
@@ -599,7 +614,7 @@ const ChatPage: React.FC = () => {
                       key={message.id}
                       className={`${
                         message.role === 'assistant'
-                          ? 'bg-aws-squid-ink-light/5 dark:bg-aws-squid-ink-dark/35'
+                          ? 'workspace-assistant-turn'
                           : ''
                       }`}>
                       <ChatMessageWithRelatedDocuments
@@ -607,7 +622,9 @@ const ChatPage: React.FC = () => {
                         isStreaming={postingMessage && idx + 1 === array.length}
                         streamingReasoning={streamingState.context.reasoning}
                         streamingTools={streamingState.context.tools}
-                        streamingRelatedDocuments={streamingState.context.relatedDocuments}
+                        streamingRelatedDocuments={
+                          streamingState.context.relatedDocuments
+                        }
                         streamingStateValue={streamingState.value as string}
                         botHasAgent={bot?.hasAgent ?? false}
                         botHasKnowledge={bot?.hasKnowledge ?? false}
@@ -620,20 +637,19 @@ const ChatPage: React.FC = () => {
                           }
                         }}
                       />
-                      <div className="w-full border-b border-aws-squid-ink-light/10 dark:border-aws-squid-ink-dark/10"></div>
                     </div>
                   ))}
                 </>
               )}
               {hasError && (
-                <div className="mb-12 mt-2 flex flex-col items-center">
+                <div className="mt-2 mb-12 flex flex-col items-center">
                   <div className="flex items-center font-bold text-red">
                     <PiWarningCircleFill className="mr-1 text-2xl" />
                     {errorDetail ?? t('error.answerResponse')}
                   </div>
 
                   <Button
-                    className="mt-2 shadow-sm "
+                    className="mt-2 shadow-sm"
                     icon={<PiArrowsCounterClockwise />}
                     outlined
                     onClick={() => {
@@ -653,8 +669,7 @@ const ChatPage: React.FC = () => {
 
       <div
         className={twMerge(
-          'bottom-0 z-0 flex w-full flex-col items-center justify-center',
-          messages.length === 0 ? 'absolute top-2/3 -translate-y-1/2' : ''
+          'workspace-composer-area z-10 flex shrink-0 flex-col items-center justify-center px-3 pb-3 sm:px-6 sm:pb-5'
         )}>
         {bot && bot.syncStatus !== SyncStatus.SUCCEEDED && (
           <div className="mb-8 w-1/2">
@@ -666,11 +681,11 @@ const ChatPage: React.FC = () => {
           </div>
         )}
         {messages.length === 0 && (
-          <div className="mb-3 flex w-11/12 flex-wrap-reverse justify-start gap-2 md:w-10/12 lg:w-4/6 xl:w-3/6">
+          <div className="mb-3 flex w-full max-w-4xl flex-wrap gap-2">
             {bot?.conversationQuickStarters?.map((qs, idx) => (
               <div
                 key={idx}
-                className="w-[calc(33.333%-0.5rem)] cursor-pointer rounded-2xl border border-aws-squid-ink-light/20 bg-white p-2 text-sm  text-dark-gray hover:shadow-lg hover:shadow-gray  dark:border-aws-squid-ink-dark/20 dark:text-light-gray"
+                className="w-[calc(33.333%-0.5rem)] cursor-pointer rounded-2xl border border-aws-squid-ink-light/20 bg-white p-2 text-sm text-dark-gray hover:shadow-lg hover:shadow-gray dark:border-aws-squid-ink-dark/20 dark:text-light-gray"
                 onClick={() => {
                   onSend(qs.example, reasoningEnabled);
                 }}>
@@ -684,9 +699,12 @@ const ChatPage: React.FC = () => {
         )}
 
         <InputChatContent
-          className="mb-7 w-11/12 md:w-10/12 lg:w-4/6 xl:w-3/6"
+          className="w-full max-w-4xl"
+          suggestedPrompt={suggestedPrompt}
           dndMode={dndMode}
-          disabledSend={postingMessage || hasError || isLastAssistantMessageEmpty}
+          disabledSend={
+            postingMessage || hasError || isLastAssistantMessageEmpty
+          }
           disabledRegenerate={postingMessage || hasError}
           disabledContinue={postingMessage || hasError}
           disabled={disabledInput}

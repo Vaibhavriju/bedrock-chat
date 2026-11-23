@@ -79,6 +79,7 @@ BASE_MODEL_IDS = {
     "mistral-large-2": "mistral.mistral-large-2407-v1:0",
     "amazon-nova-pro": "amazon.nova-pro-v1:0",
     "amazon-nova-lite": "amazon.nova-lite-v1:0",
+    "amazon-nova-2-lite": "amazon.nova-2-lite-v1:0",
     "amazon-nova-micro": "amazon.nova-micro-v1:0",
     "deepseek-r1": "deepseek.r1-v1:0",
     "llama3-3-70b-instruct": "meta.llama3-3-70b-instruct-v1:0",
@@ -100,6 +101,7 @@ BASE_MODEL_IDS = {
 
 # Global inference profiles
 GLOBAL_INFERENCE_PROFILES = {
+    "amazon-nova-2-lite": {"supported_regions": ["us-east-1", "us-east-2", "us-west-2"]},
     "kimi-k3": {
         "supported_regions": ["us-east-1", "us-east-2", "us-west-2"],
     },
@@ -370,6 +372,7 @@ GLOBAL_INFERENCE_PROFILES = {
 
 # Regional inference profiles
 REGIONAL_INFERENCE_PROFILES = {
+    "amazon-nova-2-lite": {"supported_regions": {"us-east-1": "us", "us-east-2": "us", "us-west-2": "us"}},
     "kimi-k3": {
         "supported_regions": {
             "us-east-1": "us",
@@ -1129,7 +1132,12 @@ def _prepare_nova_model_params(
         }
 
     # Batterypool patch: Amazon Nova (v1) allows only about 5K output tokens, so keep the old 4096 cap.
-    inference_config["maxTokens"] = min(inference_config["maxTokens"], 4096)
+    if model == "amazon-nova-2-lite":
+        inference_config["maxTokens"] = min(inference_config["maxTokens"], 65536)
+        # Keep Nova 2 reasoning off and omit the Nova 1 topK envelope.
+        converse_config.pop("additionalModelRequestFields", None)
+    else:
+        inference_config["maxTokens"] = min(inference_config["maxTokens"], 4096)
 
     return converse_config
 

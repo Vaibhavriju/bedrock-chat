@@ -77,3 +77,27 @@ Official references:
 - https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-4-6.html
 - https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-4-6.html
 - https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_Message.html
+
+## Modern workspace and model discovery update (23 November 2026)
+
+The workspace refresh adds a BatteryPool identity, a document/code/data welcome screen, starter prompts that fill the composer, a wider message column and composer, file preview chips, visible focus styles, labelled icon actions, reduced motion support and a lighter navigation surface. The layout uses responsive CSS; desktop and mobile visual smoke tests must be completed on the deployed build.
+
+The administrator-only `/admin/models` page reads Bedrock model summaries, active inference profiles and bounded availability checks using the **application execution role**. Results are cached for five minutes. Profile pagination is bounded to five pages and a warning identifies incomplete results. Metadata checks use up to four parallel workers and twelve models. `ACTIVE` profiles and available metadata are not labelled as successful inference. This endpoint never invokes a model, creates an agreement or changes workspace access.
+
+The owner ran a CloudShell check in account 940880953077, us-east-1. Nova 2 Lite returned `OK` through `us.amazon.nova-2-lite-v1:0`. Claude Sonnet/Opus/Haiku 5.5 and GPT-6.2 Sol/Astra reported `AUTHORIZED`, entitlement and Region `AVAILABLE`, but agreement `NOT_AVAILABLE`; they were not invoked. These observations concern the CloudShell principal and do not replace an application-role smoke test. Latest models remain outside the workspace allowlist pending activation, adapter validation and inference tests.
+
+Nova 2 Lite is now supported as `amazon-nova-2-lite`. It uses an existing geo/global inference profile according to deployment flags; the current us-east-1 deployment normally chooses global inference. Its integration keeps reasoning off and omits Nova 1-only request parameters. The output cap is 65,536 (normal workspace default remains 32,768). Original binary documents still require Claude in this application; extracted text works with Nova. Token cost figures are estimates using published standard global token rates and do not prove billing or credit eligibility.
+
+### Reliability and privacy changes
+
+- Frame payloads are split according to their serialized UTF-8 byte size, keeping the JSON envelope below the API Gateway limit even with Devanagari, emoji or escaped text.
+- WebSocket success requires an explicit completion event. Premature disconnects fail visibly; connection, idle and total deadlines clear on completion/failure. The client does not automatically retry an interrupted generation, which could duplicate work or charges.
+- Credentials, message frames and full conversation bodies are no longer emitted by the touched client/server log paths. Other upstream tools and account-level invocation logging need a separate review.
+- Generic server failures return an opaque request ID and a safe message. Detailed stack traces remain server-side. Malformed Bearer headers are rejected.
+- The configured workspace model allowlist is enforced on the server before loading conversation data; hiding a model only in the UI is insufficient.
+
+### Deploying the update
+
+The existing `CDK_JSON_OVERRIDE` replaces `globalAvailableModels`, so changing `cdk/cdk.json` alone will **not** enable Nova 2 Lite in this account. Preserve the override and append `amazon-nova-2-lite` explicitly. Keep the current Sonnet 4.6 default and existing title model. Do not bulk-enable all catalog models. Deploy backend and frontend together with the existing job. Verify the exact checkout SHA in build logs, then repeat authenticated chat, code, file upload, file history and original download tests.
+
+Before describing the system as production-ready, also complete two-user isolation and deletion checks, load/latency testing, mobile/keyboard testing, operational alarms, backup/restore checks and a review of IAM, retention and provider agreement/credit eligibility. This change improves the application; it is not a production certification.

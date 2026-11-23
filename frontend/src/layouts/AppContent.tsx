@@ -89,7 +89,7 @@ const AppContent: React.FC<Props> = (props) => {
   const { drawerOptions, setDrawerOptions } = useDrawer();
 
   return (
-    <div className="relative flex h-dvh w-screen bg-aws-paper-light dark:bg-aws-paper-dark">
+    <div className="workspace relative flex h-dvh w-screen bg-aws-paper-light dark:bg-aws-paper-dark">
       <Drawer
         isAdmin={isAdmin}
         pinnedBots={pinnedBots}
@@ -146,10 +146,11 @@ const AppContent: React.FC<Props> = (props) => {
         onClose={() => setIsOpenDrawerOptions(false)}
       />
 
-      <main className="relative flex min-h-dvh flex-1 flex-col overflow-y-hidden transition-width">
-        <header className="visible flex h-12 w-full items-center bg-aws-squid-ink-light p-3 text-lg text-aws-font-color-white-light dark:bg-aws-squid-ink-dark dark:text-aws-font-color-white-dark lg:hidden lg:h-0">
+      <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-hidden transition-width">
+        <header className="visible flex h-12 w-full items-center bg-aws-squid-ink-light p-3 text-lg text-aws-font-color-white-light lg:hidden lg:h-0 dark:bg-aws-squid-ink-dark dark:text-aws-font-color-white-dark">
           <button
-            className="mr-2 rounded-full p-2 hover:brightness-50 focus:outline-hidden focus:ring-1 focus:ring-blue-500/50 "
+            aria-label="Toggle sidebar"
+            className="mr-2 rounded-full p-2 hover:brightness-50 focus:ring-1 focus:ring-blue-500/50 focus:outline-hidden"
             onClick={() => {
               switchDrawer();
             }}>
@@ -176,7 +177,7 @@ const AppContent: React.FC<Props> = (props) => {
         </header>
 
         <div
-          className="h-full overflow-hidden overflow-y-auto  text-aws-font-color-light dark:text-aws-font-color-dark"
+          className="h-full min-h-0 overflow-hidden overflow-y-auto text-aws-font-color-light dark:text-aws-font-color-dark"
           id="main">
           <SnackbarProvider>
             <Outlet />

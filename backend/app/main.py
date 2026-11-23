@@ -1,6 +1,7 @@
 import logging
 import os
 import traceback
+from uuid import uuid4
 from typing import Callable
 
 from app.dependencies import get_current_user
@@ -11,6 +12,7 @@ from app.repositories.common import (
 )
 from app.routes.attachments import router as attachments_router
 from app.routes.admin import router as admin_router
+from app.routes.model_catalog import router as model_catalog_router
 from app.routes.api_publication import router as api_publication_router
 from app.routes.bot import router as bot_router
 from app.routes.bot_store import router as bot_store_router
@@ -65,6 +67,7 @@ if not is_published_api:
     app.include_router(bot_router)
     app.include_router(api_publication_router)
     app.include_router(admin_router)
+    app.include_router(model_catalog_router)
     app.include_router(user_router)
     app.include_router(bot_store_router)
     app.include_router(global_config_router)
@@ -82,10 +85,12 @@ app.add_middleware(
 
 
 def error_handler_factory(status_code: int) -> Callable[[Request, Exception], Response]:
-    def error_handler(_: Request, exc: Exception) -> JSONResponse:
-        logger.error(exc)
+    def error_handler(request: Request, exc: Exception) -> JSONResponse:
+        request_id = getattr(request.state, "request_id", "unknown")
+        logger.error("Request failed status=%s id=%s type=%s", status_code, request_id, type(exc).__name__)
         logger.error("".join(traceback.format_tb(exc.__traceback__)))
-        return JSONResponse({"errors": [str(exc)]}, status_code=status_code)
+        message = "The service could not complete this request. Retry or share the request ID with your administrator." if status_code >= 500 else str(exc)
+        return JSONResponse({"errors": [message], "requestId": request_id}, status_code=status_code, headers={"X-Request-ID": request_id})
 
     return error_handler  # type: ignore
 
@@ -108,7 +113,10 @@ def add_current_user_to_request(request: Request, call_next: ASGIApp):
         if not is_published_api:
             authorization = request.headers.get("Authorization")
             if authorization:
-                token_str = authorization.split(" ")[1]
+                parts = authorization.split()
+                if len(parts) != 2 or parts[0].lower() != "bearer":
+                    return JSONResponse({"errors": ["A valid Bearer token is required."]}, status_code=401)
+                token_str = parts[1]
                 token = HTTPAuthorizationCredentials(
                     scheme="Bearer", credentials=token_str
                 )
@@ -119,7 +127,10 @@ def add_current_user_to_request(request: Request, call_next: ASGIApp):
     else:
         authorization = request.headers.get("Authorization")
         if authorization:
-            token_str = authorization.split(" ")[1]
+            parts = authorization.split()
+            if len(parts) != 2 or parts[0].lower() != "bearer":
+                return JSONResponse({"errors": ["A valid Bearer token is required."]}, status_code=401)
+            token_str = parts[1]
             token = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token_str)
             request.state.current_user = get_current_user(token)
         else:
@@ -133,10 +144,11 @@ def add_current_user_to_request(request: Request, call_next: ASGIApp):
 
 @app.middleware("http")
 async def add_log_requests(request: Request, call_next: ASGIApp):
-    logger.info(f"Request path: {request.url.path}")
+    request.state.request_id = uuid4().hex
+    logger.info("Request path=%s id=%s", request.url.path, request.state.request_id)
     logger.info(f"Request method: {request.method}")
     # Keep credentials and uploaded/private content out of request logs.
 
     response = await call_next(request)  # type: ignore
-
+    response.headers["X-Request-ID"] = request.state.request_id
     return response

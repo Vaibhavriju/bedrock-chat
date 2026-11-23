@@ -1,7 +1,10 @@
 {
   "app": "npx ts-node --prefer-ts-exts bin/bedrock-chat.ts",
   "watch": {
-    "include": ["**", "../backend"],
+    "include": [
+      "**",
+      "../backend"
+    ],
     "exclude": [
       "README.md",
       "../backend/**/__pycache__",
@@ -21,7 +24,10 @@
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
     "@aws-cdk/aws-lambda:recognizeVersionProps": true,
     "@aws-cdk/core:checkSecretUsage": true,
-    "@aws-cdk/core:target-partitions": ["aws", "aws-cn"],
+    "@aws-cdk/core:target-partitions": [
+      "aws",
+      "aws-cn"
+    ],
     "@aws-cdk-containers/ecs-service-extensions:enableDefaultLogDriver": true,
     "@aws-cdk/aws-ec2:uniqueImdsv2TemplateName": true,
     "@aws-cdk/aws-ecs:arnFormatIncludesClusterName": true,
@@ -55,7 +61,10 @@
     "bedrockRegion": "us-east-1",
     "enableFrontendIpv6": true,
     "enableFrontendWaf": true,
-    "allowedIpV4AddressRanges": ["0.0.0.0/1", "128.0.0.0/1"],
+    "allowedIpV4AddressRanges": [
+      "0.0.0.0/1",
+      "128.0.0.0/1"
+    ],
     "allowedIpV6AddressRanges": [
       "0000:0000:0000:0000:0000:0000:0000:0000/1",
       "8000:0000:0000:0000:0000:0000:0000:0000/1"
@@ -64,9 +73,14 @@
     "identityProviders": [],
     "userPoolDomainPrefix": "",
     "allowedSignUpEmailDomains": [],
-    "autoJoinUserGroups": ["CreatingBotAllowed"],
+    "autoJoinUserGroups": [
+      "CreatingBotAllowed"
+    ],
     "selfSignUpEnabled": true,
-    "publishedApiAllowedIpV4AddressRanges": ["0.0.0.0/1", "128.0.0.0/1"],
+    "publishedApiAllowedIpV4AddressRanges": [
+      "0.0.0.0/1",
+      "128.0.0.0/1"
+    ],
     "publishedApiAllowedIpV6AddressRanges": [
       "0000:0000:0000:0000:0000:0000:0000:0000/1",
       "8000:0000:0000:0000:0000:0000:0000:0000/1"
@@ -79,8 +93,13 @@
     "enableBotStoreReplicas": false,
     "botStoreLanguage": "en",
     "globalAvailableModels": [
-      "claude-v4.6-sonnet", "claude-v4.6-opus", "claude-v4.5-haiku",
-      "claude-v4.5-sonnet", "kimi-k3", "deepseek-v3.2"
+      "claude-v4.6-sonnet",
+      "claude-v4.6-opus",
+      "claude-v4.5-haiku",
+      "claude-v4.5-sonnet",
+      "kimi-k3",
+      "deepseek-v3.2",
+      "amazon-nova-2-lite"
     ],
     "defaultModel": "claude-v4.6-sonnet",
     "titleModel": "claude-v4.5-haiku",
