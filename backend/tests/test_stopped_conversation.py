@@ -263,3 +263,75 @@ def test_saved_cancelled_answer_sends_the_authoritative_completion_event():
     payload = json.loads(queued["payload"])
     assert payload["status"] == "STREAMING_END"
     assert payload["stop_reason"] == "cancelled"
+
+
+def test_quota_failure_prevents_preparation_and_inference(monkeypatch):
+    from app.usage_control import UsageLimitExceeded
+    import pytest
+
+    _, request = fixture_data()
+    prepare = Mock()
+    monkeypatch.setattr("app.usecases.chat.prepare_conversation", prepare)
+    monkeypatch.setattr(
+        "app.usecases.chat.reserve_generation",
+        Mock(side_effect=UsageLimitExceeded("Daily request limit reached")),
+    )
+    with pytest.raises(UsageLimitExceeded):
+        chat(Mock(id="user-a"), request)
+    prepare.assert_not_called()
+
+
+def test_workspace_output_cap_cannot_be_expanded_by_an_old_reasoning_budget(
+    monkeypatch,
+):
+    conversation, request = fixture_data()
+    monkeypatch.setattr(
+        "app.usecases.chat.prepare_conversation",
+        lambda *_: ("prompt", conversation, None),
+    )
+    monkeypatch.setattr("app.usecases.chat.reserve_generation", lambda *_: 2048)
+    answer = MessageModel(
+        role="assistant",
+        content=[TextContentModel(content_type="text", body="Answer")],
+        model=request.message.model,
+        parent=None,
+        children=[],
+        create_time=1,
+    )
+    invoke = Mock(
+        return_value=OnStopInput(
+            message=answer,
+            stop_reason="end_turn",
+            input_token_count=0,
+            output_token_count=0,
+            cache_read_input_count=0,
+            cache_write_input_count=0,
+            price=0,
+        )
+    )
+    monkeypatch.setattr(
+        "app.strands_integration.chat_strands.converse_with_strands", invoke
+    )
+    monkeypatch.setattr("app.usecases.chat.store_conversation", lambda *_: None)
+    chat(Mock(id="user-a"), request)
+    params = invoke.call_args.kwargs["generation_params"]
+    assert params.max_tokens == 2048
+    assert params.reasoning_params.budget_tokens == 1024
+
+
+def test_titles_are_local_and_cannot_bypass_generation_quotas(monkeypatch):
+    from app.usecases.chat import propose_conversation_title
+
+    conversation, _ = fixture_data()
+    conversation.message_map["prompt"].content[0].body = (
+        "  Please help with\n  a firmware issue " + "x" * 100
+    )
+    monkeypatch.setattr(
+        "app.usecases.chat.find_conversation_by_id", lambda *_: conversation
+    )
+    invoke = Mock()
+    monkeypatch.setattr("app.usecases.chat.call_converse_api", invoke)
+    title = propose_conversation_title("user-a", conversation.id)
+    assert title.startswith("Please help with a firmware issue")
+    assert len(title) == 80
+    invoke.assert_not_called()

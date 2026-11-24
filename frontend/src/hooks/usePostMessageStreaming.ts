@@ -222,6 +222,9 @@ const usePostMessageStreaming = create<{
                       text: data.completion,
                     });
                     break;
+                  case 'HEARTBEAT':
+                    // Keep reasoning/tool waits alive without changing partial text.
+                    break;
                   case 'STOP_REQUESTED':
                     set({ isStopping: true });
                     break;

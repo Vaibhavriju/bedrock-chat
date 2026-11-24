@@ -7,9 +7,9 @@ router = APIRouter(tags=["admin"])
 
 
 @router.get("/admin/models", dependencies=[Depends(check_admin)])
-def read_model_catalog():
+def read_model_catalog(refresh: bool = False):
     try:
-        return get_model_catalog()
+        return get_model_catalog(force=refresh)
     except (ClientError, BotoCoreError):
         raise HTTPException(
             status_code=503,

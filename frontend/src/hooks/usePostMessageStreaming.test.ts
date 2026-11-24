@@ -69,6 +69,33 @@ describe('stream completion and failures', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('keeps a long reasoning wait alive on heartbeats without resetting partial text', async () => {
+    const event = vi.fn();
+    const promise = usePostMessageStreaming
+      .getState()
+      .post({ input, handleStreamingEvent: event });
+    await vi.advanceTimersByTimeAsync(0);
+    const socket = FakeSocket.latest;
+    socket.onopen?.();
+    socket.onmessage?.({
+      data: JSON.stringify({ status: 'STREAMING', completion: 'Partial' }),
+    });
+    for (let tick = 0; tick < 12; tick++) {
+      await vi.advanceTimersByTimeAsync(15000);
+      socket.onmessage?.({ data: JSON.stringify({ status: 'HEARTBEAT' }) });
+    }
+    expect(usePostMessageStreaming.getState().isActive).toBe(true);
+    expect(event).not.toHaveBeenCalledWith({ type: 'reset' });
+    expect(event).toHaveBeenCalledWith({ type: 'text', text: 'Partial' });
+    socket.onmessage?.({
+      data: JSON.stringify({
+        status: 'STREAMING_END',
+        stop_reason: 'end_turn',
+      }),
+    });
+    await promise;
+  });
+
   it('reports a connection timeout and clears timers', async () => {
     const promise = usePostMessageStreaming
       .getState()

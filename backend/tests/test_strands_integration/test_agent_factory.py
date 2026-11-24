@@ -43,6 +43,8 @@ class TestReasoningSummaryReplay(unittest.TestCase):
         """GPT-6 returns 400 for reasoningText in assistant messages; redactedContent is accepted"""
         for model, enable_reasoning, expected in [
             ("gpt-6-sol", True, [REDACTED, TEXT, TOOL_USE]),
+            ("gpt-6.2-sol", True, [REDACTED, TEXT, TOOL_USE]),
+            ("gpt-6.2-astra", True, [REDACTED, TEXT, TOOL_USE]),
             ("gpt-6-astra", True, [REDACTED, TEXT, TOOL_USE]),
             # Summaries stored on an earlier turn also come back with the toggle off
             # and on Continue

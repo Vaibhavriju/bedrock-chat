@@ -1,3 +1,4 @@
+from app.usage_control import reserve_generation
 import logging
 from typing import Callable
 from threading import Event
@@ -304,6 +305,15 @@ def chat(
     on_reasoning: Callable[[str], None] | None = None,
     cancel_signal: Event | None = None,
 ) -> tuple[ConversationModel, MessageModel]:
+    # Authenticate/model-allowlist validation happens before any usage reservation.
+    from app.usecases.global_config import get_global_available_models
+
+    enabled_models = get_global_available_models()
+    if enabled_models and chat_input.message.model not in enabled_models:
+        raise PermissionError("This model is not enabled in the workspace.")
+    output_cap = None
+    if cancel_signal is None or not cancel_signal.is_set():
+        output_cap = reserve_generation(user, chat_input.message.model)
     user_msg_id, conversation, bot = prepare_conversation(user, chat_input)
     display_citation = bot is not None and bot.display_retrieved_chunks
 
@@ -400,6 +410,18 @@ def chat(
         message_for_continue_generate = None
 
     generation_params = bot.generation_params if bot else None
+    if output_cap is not None:
+        generation_params = (
+            generation_params.model_copy(deep=True)
+            if generation_params
+            else GenerationParamsModel()
+        )
+        generation_params.max_tokens = min(generation_params.max_tokens, output_cap)
+        # Older Claude's budget adjustment must not grow past the output ceiling.
+        generation_params.reasoning_params.budget_tokens = min(
+            generation_params.reasoning_params.budget_tokens,
+            max(1024, output_cap - 1024),
+        )
 
     # Guardrails
     guardrail = bot.bedrock_guardrails if bot else None
@@ -772,68 +794,18 @@ def propose_conversation_title(
     user_id: str,
     conversation_id: str,
 ) -> str:
-    # Use the configured title model for generating conversation titles
-    model = get_title_model()
-
-    PROMPT = """Reading the conversation above, what is the appropriate title for the conversation? When answering the title, please follow the rules below:
-<rules>
-- Title length must be from 15 to 20 characters.
-- Prefer more specific title than general. Your title should always be distinct from others.
-- Return the conversation title only. DO NOT include any strings other than the title.
-- Title must be in the same language as the conversation.
-</rules>
-"""
-    # Fetch existing conversation
+    """Derive a short local title without hidden or unbounded model calls."""
     conversation = find_conversation_by_id(user_id, conversation_id)
-
     messages = trace_to_root(
-        node_id=conversation.last_message_id,
-        message_map=conversation.message_map,
+        node_id=conversation.last_message_id, message_map=conversation.message_map
     )
-
-    # Append message to generate title
-    new_message = SimpleMessageModel(
-        role="user",
-        content=[
-            TextContentModel(
-                content_type="text",
-                body=PROMPT,
-            )
-        ],
-    )
-    messages.append(new_message)
-
-    # Invoke Bedrock
-    args = compose_args_for_converse_api(
-        messages=[
-            message
-            for message in messages
-            if not any(
-                isinstance(content, ToolUseContentModel)
-                or isinstance(content, ToolResultContentModel)
-                or isinstance(content, ReasoningContentModel)
-                for content in message.content
-            )
-        ],
-        model=model,
-        stream=False,
-    )
-    response = call_converse_api(args)
-    # Reasoning models (e.g. GPT-OSS) put a reasoningContent block before the text
-    reply_txt = (
-        next(
-            (
-                c["text"]
-                for c in response["output"]["message"]["content"]
-                if "text" in c
-            ),
-            "",
-        )
-        if "message" in response["output"]
-        else ""
-    )
-
-    return reply_txt
+    for message in messages:
+        if message.role != "user":
+            continue
+        for content in message.content:
+            if isinstance(content, TextContentModel) and content.body.strip():
+                return " ".join(content.body.split())[:80]
+    return "New conversation"
 
 
 def fetch_conversation(user_id: str, conversation_id: str) -> Conversation:

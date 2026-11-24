@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.frontier_models import FRONTIER_MODELS, CLAUDE_55, GPT_62
+
 import logging
 import os
 from typing import (
@@ -99,9 +101,13 @@ BASE_MODEL_IDS = {
     "gpt-6-astra": "openai.gpt-6-astra",
 }
 
+BASE_MODEL_IDS.update(FRONTIER_MODELS)
+
 # Global inference profiles
 GLOBAL_INFERENCE_PROFILES = {
-    "amazon-nova-2-lite": {"supported_regions": ["us-east-1", "us-east-2", "us-west-2"]},
+    "amazon-nova-2-lite": {
+        "supported_regions": ["us-east-1", "us-east-2", "us-west-2"]
+    },
     "kimi-k3": {
         "supported_regions": ["us-east-1", "us-east-2", "us-west-2"],
     },
@@ -372,7 +378,9 @@ GLOBAL_INFERENCE_PROFILES = {
 
 # Regional inference profiles
 REGIONAL_INFERENCE_PROFILES = {
-    "amazon-nova-2-lite": {"supported_regions": {"us-east-1": "us", "us-east-2": "us", "us-west-2": "us"}},
+    "amazon-nova-2-lite": {
+        "supported_regions": {"us-east-1": "us", "us-east-2": "us", "us-west-2": "us"}
+    },
     "kimi-k3": {
         "supported_regions": {
             "us-east-1": "us",
@@ -684,6 +692,23 @@ REGIONAL_INFERENCE_PROFILES = {
     },
 }
 
+# This integration supports these candidates from US source Regions. Runtime
+# probes can select a working US/global profile before employees can choose one.
+for _model in FRONTIER_MODELS:
+    GLOBAL_INFERENCE_PROFILES.setdefault(
+        _model, {"supported_regions": ["us-east-1", "us-east-2", "us-west-2"]}
+    )
+    REGIONAL_INFERENCE_PROFILES.setdefault(
+        _model,
+        {
+            "supported_regions": {
+                "us-east-1": "us",
+                "us-east-2": "us",
+                "us-west-2": "us",
+            }
+        },
+    )
+
 client = get_bedrock_runtime_client()
 
 
@@ -743,7 +768,7 @@ def is_tooluse_supported(model: type_model_name) -> bool:
 
 def is_adaptive_thinking_model(model: type_model_name) -> bool:
     """Claude 4.6+ models use adaptive thinking instead of extended thinking with budget_tokens."""
-    return model in [
+    return model in CLAUDE_55 or model in [
         "claude-v4.6-opus",
         "claude-v4.6-sonnet",
         "claude-v4.7-opus",
@@ -753,7 +778,7 @@ def is_adaptive_thinking_model(model: type_model_name) -> bool:
 
 def is_prefill_supported(model: type_model_name) -> bool:
     """Claude 4.6+ models do not support assistant message prefilling."""
-    return model not in [
+    return model not in (CLAUDE_55 | GPT_62) and model not in [
         "claude-v4.6-opus",
         "claude-v4.6-sonnet",
         "claude-v4.7-opus",
@@ -762,7 +787,7 @@ def is_prefill_supported(model: type_model_name) -> bool:
 
 
 def is_specify_both_temperature_and_top_p_supported(model: type_model_name) -> bool:
-    return model not in [
+    return model not in (CLAUDE_55 | GPT_62) and model not in [
         "claude-v4.1-opus",
         "claude-v4.5-opus",
         "claude-v4.6-opus",
@@ -776,7 +801,7 @@ def is_specify_both_temperature_and_top_p_supported(model: type_model_name) -> b
 
 def is_top_k_supported(model: type_model_name) -> bool:
     """Claude Opus 4.7+ deprecates top_k parameter."""
-    return model not in [
+    return model not in (CLAUDE_55 | GPT_62) and model not in [
         "claude-v4.7-opus",
         "claude-v5.5-opus",
     ]
@@ -784,7 +809,7 @@ def is_top_k_supported(model: type_model_name) -> bool:
 
 def is_top_p_supported(model: type_model_name) -> bool:
     """Claude Opus 4.7+ deprecates top_p parameter. OpenAI GPT-6 rejects it."""
-    return model not in [
+    return model not in (CLAUDE_55 | GPT_62) and model not in [
         "claude-v4.7-opus",
         "claude-v5.5-opus",
         "gpt-6-sol",
@@ -795,7 +820,7 @@ def is_top_p_supported(model: type_model_name) -> bool:
 
 def is_temperature_supported(model: type_model_name) -> bool:
     """Claude Opus 4.7+ deprecates temperature parameter. OpenAI GPT-6 rejects it."""
-    return model not in [
+    return model not in (CLAUDE_55 | GPT_62) and model not in [
         "claude-v4.7-opus",
         "claude-v5.5-opus",
         "gpt-6-sol",
@@ -808,7 +833,7 @@ def is_reasoning_summary_supported(model: type_model_name) -> bool:
     """OpenAI GPT-6 returns readable reasoning only when `reasoning.summary` is set,
     and rejects the summary (reasoningText) when it is sent back in an assistant message.
     """
-    return model in [
+    return model in GPT_62 or model in [
         "gpt-6-sol",
         "gpt-6-luna",
         "gpt-6-astra",
@@ -818,6 +843,8 @@ def is_reasoning_summary_supported(model: type_model_name) -> bool:
 def is_prompt_caching_supported(
     model: type_model_name, target: Literal["system", "message", "tool"]
 ) -> bool:
+    if model in CLAUDE_55:
+        return True
     if target == "tool":
         return model in [
             "claude-v4-opus",
@@ -869,9 +896,7 @@ def is_multiple_system_prompt_content_supported(model: type_model_name):
 
 def is_unsigned_reasoning_content_supported(model: type_model_name):
     return not (
-        is_deepseek_model(model)
-        or is_gpt_oss_model(model)
-        or is_kimi_model(model)
+        is_deepseek_model(model) or is_gpt_oss_model(model) or is_kimi_model(model)
     )
 
 
@@ -1243,7 +1268,35 @@ def generation_params_to_converse_configuration(
 ) -> ConverseConfiguration:
     converse_configuration: ConverseConfiguration
 
-    if is_nova_model(model):
+    if model in FRONTIER_MODELS:
+        max_tokens = min(
+            (
+                generation_params.max_tokens
+                if generation_params
+                else DEFAULT_GENERATION_CONFIG["max_tokens"]
+            ),
+            128000,
+        )
+        converse_configuration = {"inferenceConfig": {"maxTokens": max_tokens}}
+        if model in CLAUDE_55:
+            if model == "claude-v5.5-opus" or enable_reasoning:
+                fields = {
+                    "thinking": {
+                        "type": "adaptive",
+                        "display": "summarized" if enable_reasoning else "omitted",
+                    }
+                }
+            elif model == "claude-v5.5-sonnet":
+                fields = {"thinking": {"type": "between_tools"}}
+            else:
+                fields = {"thinking": {"type": "disabled"}}
+            converse_configuration["additionalModelRequestFields"] = fields
+        elif enable_reasoning:
+            converse_configuration["additionalModelRequestFields"] = {
+                "reasoning": {"summary": "auto"}
+            }
+
+    elif is_nova_model(model):
         # Special handling for Nova models
         converse_configuration = _prepare_nova_model_params(model, generation_params)
 
@@ -1581,6 +1634,27 @@ def calculate_price(
     cache_write_input_tokens: int,
     region: str = BEDROCK_REGION,
 ) -> float:
+    if model in GPT_62:
+        # AWS Standard tier, 24 Nov 2026; estimates only. Long context applies
+        # to the full request, including cached tokens. No Ultrafast tier is used.
+        input_rate, output_rate = (2.0, 10.0) if model == "gpt-6.2-sol" else (8.0, 40.0)
+        long_context = (
+            input_tokens + cache_read_input_tokens + cache_write_input_tokens > 272000
+        )
+        if long_context:
+            input_rate *= 2
+            output_rate *= 1.5
+        factor = 1.0 if get_model_id(model).startswith("global.") else 1.1
+        return (
+            factor
+            * (
+                input_tokens * input_rate
+                + output_tokens * output_rate
+                + cache_read_input_tokens * input_rate * 0.05
+                + cache_write_input_tokens * input_rate * 1.25
+            )
+            / 1_000_000
+        )
     if model not in BEDROCK_PRICING["default"]:
         # e.g. models added before AWS publishes their on-demand price
         logger.warning(f"No pricing defined for model '{model}'. Recording price 0.")
@@ -1655,6 +1729,21 @@ def get_model_id(
     enable_cross_region: bool = ENABLE_BEDROCK_CROSS_REGION_INFERENCE,
     bedrock_region: str = BEDROCK_REGION,
 ) -> str:
+    if model in FRONTIER_MODELS and os.environ.get("USAGE_CONTROL_TABLE_NAME"):
+        from app.usage_control import verified_models, usable_model_record
+
+        record = verified_models().get(model, {})
+        if record.get("ready"):
+            if not usable_model_record(
+                record,
+                region=bedrock_region,
+                allow_global=enable_global,
+                allow_geo=enable_cross_region,
+            ):
+                raise PermissionError(
+                    "The verified model profile no longer matches the deployment routing settings. Recheck model access."
+                )
+            return record["profileId"]
     base_model_id = BASE_MODEL_IDS.get(model)
     if not base_model_id:
         raise ValueError(f"Unsupported model: {model}")

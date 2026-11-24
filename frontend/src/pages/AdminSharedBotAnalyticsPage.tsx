@@ -60,6 +60,11 @@ const AdminSharedBotAnalyticsPage: React.FC = () => {
       pageTitleHelp={t('admin.botAnalytics.help.overview')}
       searchCondition={
         <div>
+          <p className="mb-3 text-sm">
+            Cost estimates can exclude models without configured pricing and
+            incomplete streams. Use AWS Billing for actual charges; these totals
+            are not spending limits.
+          </p>
           <div className="rounded-sm border p-2">
             <div className="flex items-center gap-1 text-sm font-bold">
               {t('admin.botAnalytics.label.SearchCondition.title')}
@@ -143,7 +148,7 @@ const AdminSharedBotAnalyticsPage: React.FC = () => {
               {(Math.floor(bot.totalPrice * 100) / 100).toFixed(2)} USD
             </div>
 
-            <div className="absolute bottom-0 right-0 flex origin-bottom-right whitespace-nowrap text-xs font-light">
+            <div className="absolute right-0 bottom-0 flex origin-bottom-right text-xs font-light whitespace-nowrap">
               {bot.isPublished ? (
                 <>
                   {bot.isPublished

@@ -23,6 +23,25 @@ const translation: typeof en = {
       backChat: 'チャットに戻る',
     },
     model: {
+      'claude-v5.5-sonnet': {
+        label: 'Claude Sonnet 5.5',
+        description:
+          'Coding, documents and everyday knowledge work with adaptive thinking.',
+      },
+      'claude-v5.5-haiku': {
+        label: 'Claude Haiku 5.5',
+        description:
+          'Fast drafting, summaries and high-volume work with optional reasoning.',
+      },
+      'gpt-6.2-sol': {
+        label: 'GPT-6.2 Sol',
+        description:
+          'Everyday coding, technical writing and business workflows.',
+      },
+      'gpt-6.2-astra': {
+        label: 'GPT-6.2 Astra',
+        description: 'Complex coding, analysis and longer technical projects.',
+      },
       'claude-v4-opus': {
         label: 'Claude 4 (Opus)',
         description:
@@ -30,8 +49,7 @@ const translation: typeof en = {
       },
       'claude-v4.1-opus': {
         label: 'Claude 4.1 (Opus)',
-        description:
-          '推論能力が向上した高性能なOpusモデル。',
+        description: '推論能力が向上した高性能なOpusモデル。',
       },
       'claude-v4.5-opus': {
         label: 'Claude 4.5 (Opus)',
@@ -125,7 +143,11 @@ const translation: typeof en = {
         description:
           '精度、速度、コストのバランスが最も優れた高性能マルチモーダルモデル',
       },
-      'amazon-nova-2-lite': {label: 'Amazon Nova 2 Lite', description: '要約、文章作成、コード、抽出済みドキュメント向けの Amazon モデル。'},
+      'amazon-nova-2-lite': {
+        label: 'Amazon Nova 2 Lite',
+        description:
+          '要約、文章作成、コード、抽出済みドキュメント向けの Amazon モデル。',
+      },
       'amazon-nova-lite': {
         label: 'Amazon Nova Lite',
         description:
@@ -579,7 +601,8 @@ const translation: typeof en = {
         title: 'プロンプトキャッシュ',
         promptCachingEnabled: {
           title: 'モデルが対応している場合、プロンプトキャッシュを利用する。',
-          description: '有効にすると、このボットと繰り返し会話した際のコストとレイテンシーを削減できます。',
+          description:
+            '有効にすると、このボットと繰り返し会話した際のコストとレイテンシーを削減できます。',
         },
       },
     },
@@ -1002,8 +1025,7 @@ const translation: typeof en = {
       advancedConfigration: {
         existingKnowledgeBaseId: {
           label: '既存のAmazon Bedrock Knowledge BaseのID',
-          description:
-            '既存のAmazon Bedrock Knowledge Baseを利用できます',
+          description: '既存のAmazon Bedrock Knowledge Baseを利用できます',
         },
         createDedicatedKnowledgeBase: {
           label: '専用のKnowledge Baseを作成する',
@@ -1051,7 +1073,7 @@ const translation: typeof en = {
             'このボットは管理者によってAPIとして公開されています。APIを公開するためには、全ユーザーに共有する必要があります。',
         },
       },
-      invalidMermaidFormat: "ダイアグラム描画時にエラーが発生しました"
+      invalidMermaidFormat: 'ダイアグラム描画時にエラーが発生しました',
     },
     validation: {
       title: 'バリデーションエラー',

@@ -26,10 +26,11 @@ def get_bedrock_model_config(
     enable_reasoning: bool = False,
     prompt_caching_enabled: bool = False,
     has_tools: bool = False,
+    runtime_model_id: str | None = None,
 ) -> BedrockModel.BedrockConfig:
     """Get Bedrock model configuration."""
 
-    model_id = get_model_id(model_name)
+    model_id = runtime_model_id or get_model_id(model_name)
 
     config: BedrockModel.BedrockConfig = {
         "model_id": model_id,

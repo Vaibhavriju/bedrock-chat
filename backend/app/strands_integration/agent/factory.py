@@ -18,6 +18,7 @@ from strands.hooks import (
     HookRegistry,
 )
 from strands.models import BedrockModel
+from botocore.config import Config
 
 from app.strands_integration.agent.config import get_bedrock_model_config
 
@@ -54,6 +55,8 @@ def create_strands_agent(
     prompt_caching_enabled: bool = False,
     has_tools: bool = False,
     hooks: list[HookProvider | HookCallback] | None = None,
+    runtime_model_id: str | None = None,
+    model_client_config: Config | None = None,
 ) -> Agent:
     model_config = get_bedrock_model_config(
         model_name=model_name,
@@ -63,10 +66,12 @@ def create_strands_agent(
         enable_reasoning=enable_reasoning,
         prompt_caching_enabled=prompt_caching_enabled,
         has_tools=has_tools,
+        runtime_model_id=runtime_model_id,
     )
     logger.debug(f"[AGENT_FACTORY] Model config: {model_config}")
     model = BedrockModel(
         region_name=BEDROCK_REGION,
+        boto_client_config=model_client_config,
         **model_config,
     )
 

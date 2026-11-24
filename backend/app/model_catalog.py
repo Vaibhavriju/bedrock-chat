@@ -14,6 +14,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from app.bedrock import BASE_MODEL_IDS
 from app.usecases.global_config import get_global_available_models
+from app.usage_control import verified_models
 
 logger = logging.getLogger(__name__)
 _lock = threading.Lock()
@@ -67,6 +68,7 @@ def build_catalog(client, region: str) -> dict:
 
     app_keys = {value: key for key, value in BASE_MODEL_IDS.items()}
     configured = get_global_available_models()
+    tested = verified_models()
     wanted = sorted(
         {
             m["modelId"]
@@ -136,6 +138,7 @@ def build_catalog(client, region: str) -> dict:
                 "candidate": model_id in CANDIDATES,
                 "profileIds": sorted(profiles.get(model_id, set())),
                 "access": access,
+                "runtimeTest": tested.get(key),
                 "detail": detail,
             }
         )
@@ -156,10 +159,10 @@ def build_catalog(client, region: str) -> dict:
     }
 
 
-def get_model_catalog() -> dict:
+def get_model_catalog(force: bool = False) -> dict:
     global _cache
     with _lock:
-        if _cache and time.monotonic() - _cache[0] < _TTL:
+        if not force and _cache and time.monotonic() - _cache[0] < _TTL:
             return copy.deepcopy(_cache[1])
         region = os.environ.get("BEDROCK_REGION", "us-east-1")
         client = boto3.client(

@@ -2,7 +2,8 @@
 
 import logging
 from threading import Event, Thread
-from time import time
+from time import time, monotonic
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +45,15 @@ class GenerationMonitor:
         user_id: str,
         interval: float = 1.0,
         cancel_signal: Event | None = None,
+        on_heartbeat: Callable[[], None] | None = None,
+        heartbeat_interval: float = 15.0,
     ):
         self.table = table
         self.connection_id = connection_id
         self.user_id = user_id
         self.interval = interval
+        self.on_heartbeat = on_heartbeat
+        self.heartbeat_interval = heartbeat_interval
         self.cancel_signal = cancel_signal if cancel_signal is not None else Event()
         self.done = Event()
         self.thread = Thread(target=self._run, daemon=True)
@@ -62,9 +67,17 @@ class GenerationMonitor:
 
     def _run(self):
         warned = False
+        next_heartbeat = monotonic() + self.heartbeat_interval
         while not self.done.is_set() and not self.cancel_signal.is_set():
             try:
                 self.check()
+                if (
+                    self.on_heartbeat
+                    and not self.cancel_signal.is_set()
+                    and monotonic() >= next_heartbeat
+                ):
+                    self.on_heartbeat()
+                    next_heartbeat = monotonic() + self.heartbeat_interval
             except Exception:
                 if not warned:
                     logger.warning(

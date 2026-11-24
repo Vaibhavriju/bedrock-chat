@@ -146,3 +146,65 @@ Deploy backend and frontend together using the newly pinned helper. The Stop/exp
 3. Copy a prompt, a code-containing answer, one request/response and the whole conversation. Export Markdown/text/JSON. Use an extracted file over 20,000 characters and verify its last line appears in Copy all and Download. Reattach binary originals in the destination LLM.
 4. Verify another user cannot read the attachment-text endpoint; check missing/deleted files and blocked clipboard permissions. Copy failure must offer Download without reporting success.
 5. Repeat scroll, model dialog and composer checks on desktop, narrow/zoomed layouts and a real mobile keyboard. Confirm all new actions remain reachable without horizontal overflow.
+
+## Frontier models and employee usage controls — 24 November 2026
+
+The authenticated production catalog was rechecked after AWS Support changed the account access. It reported access metadata available for Claude Opus 5.5 and GPT-6.2 Astra; Sonnet 5.5, Haiku 5.5 and GPT-6.2 Sol remained unconfirmed by metadata. AWS Console still returned Site Unavailable in the assistant's browser. No new account-level inference test or deployment was performed by the assistant in this release.
+
+The reviewed integration includes these candidates:
+
+| Workspace key | Bedrock foundation model ID |
+|---|---|
+| `claude-v5.5-sonnet` | `anthropic.claude-sonnet-5-5` |
+| `claude-v5.5-opus` | `anthropic.claude-opus-5-5` |
+| `claude-v5.5-haiku` | `anthropic.claude-haiku-5-5` |
+| `gpt-6.2-sol` | `openai.gpt-6.2-sol` |
+| `gpt-6.2-astra` | `openai.gpt-6.2-astra` |
+
+Candidates are not exposed to employees just because an adapter exists or an inference profile is ACTIVE. After CodeBuild succeeds, rerunning the pinned deployment helper invokes a private, IAM-only diagnostic Lambda using the **same execution role as production WebSocket chat**. It sends a fixed, small prompt through the app's actual Strands adapter, checks streamed text and a reasoning-enabled follow-up turn, and stores only passing profiles in the model registry. These diagnostic calls can be billable. No arbitrary model/prompt inputs, subscription APIs or agreement APIs are exposed.
+
+The diagnostic respects the deployment's global/US geographic inference flags. It does not fall back to global routing when that option is disabled. It stores the actual profile that passed and its source Region. If routing changes, stale incompatible registrations cannot be used. A lease prevents concurrent probe jobs; matching completed checks are reused. Use `--recheck-models` after a later AWS access change to rerun the bounded checks. If the app stack has a prefix, supply `--stack-name <actual-stack-name>`.
+
+The helper preserves the live domain, authentication settings, default model and existing baseline model list. It checks the project/account/repository on every run, refuses another active deployment and uses a CodeBuild idempotency token for simultaneous starts. Failed model registration is reported separately from a successful infrastructure build. It requires the operator to be able to read the application stack outputs and invoke the private probe. It does not create deployment credentials or widen a user's IAM permissions.
+
+Claude 5.5 uses model-specific reasoning requests: Opus always uses adaptive thinking; Sonnet's lower-thinking setting is `between_tools`; Haiku can disable thinking. Readable summaries use the supported display option. Unsupported sampling/prefill options are omitted. GPT-6.2 uses Converse streaming with optional reasoning summaries, omits unsupported explicit cache points and sampling controls, and preserves its opaque reasoning data while omitting readable summaries on replay. Original binary documents still require Claude in this app; extracted text works with the integrated OpenAI models. Output requests are bounded to 128,000 tokens; normal defaults remain 32,768 unless a lower policy/bot limit applies.
+
+A response heartbeat keeps long reasoning/tool waits alive without resetting partial text or cancelling the conversation. Existing idle/total deadlines and explicit completion handling remain. Chat titles now derive locally from the first user prompt, avoiding an extra, unbounded title-model endpoint around usage controls.
+
+### Configuring limits
+
+Open **Admin → Usage limits** after deployment. No caps are imposed by default. Save the desired amounts; changes apply to newly admitted generations. **Your usage** in the chat header shows the selected model's current counters and caps.
+
+| Scope | Controls |
+|---|---|
+| Entire workspace | Daily/monthly generation requests and output tokens per chat model call |
+| Default for each employee | Daily/monthly requests and output ceiling |
+| Individual employee email | Overrides for defaults; optional model allowlist |
+| Each model across the workspace | Enable/disable, daily/monthly requests and output ceiling |
+| Each employee on a model | Separate daily/monthly request cap for that model |
+
+Blank means no additional cap. Individual employee blanks inherit the employee default. A request cap of zero blocks use. Shared workspace and model caps still apply even when an employee gets a larger personal allocation. Counters use the verified Cognito subject, so another browser tab or an email change does not reset usage. Email identifies the admin's policy override, not a new AWS/IAM/Kiro user.
+
+Admission reserves all day/month counters in one DynamoDB transaction, with a policy-revision condition. Rejected reservations increment none of the counters. Policy changes during reservation are reloaded; competing admin saves return a conflict without dropping the unsaved draft. The request is rejected before retrieval or model/tool execution when a cap is reached. A lost/unavailable quota backend fails closed. The WebSocket execution environment also receives the baseline allowlist explicitly; both REST chat and streaming validate employee/model access on the server.
+
+Request counts include admitted attempts that later fail or are stopped. Stop before backend admission does not count. A tool loop counts as one admitted generation; its chat model calls each receive the output ceiling, but remote tools/agents can have separate underlying usage. Titles use no model. Private diagnostic calls, published bot APIs and direct Bedrock/Kiro/other applications are outside these workspace counters. These controls are **not dollar budgets, monthly token budgets, or AWS-account-wide service quotas**. Token prices/context size/caching/tools still determine actual AWS charges. Cost analytics can exclude models without configured rates and incomplete streams; AWS Billing remains authoritative.
+
+Periods roll over by their keys at midnight in `Asia/Kolkata` and on the first day of the month. DynamoDB TTL only cleans up counters after roughly 100 days; enforcement does not wait for TTL deletion. Counts start with this release and do not backfill earlier chat history. The dedicated table uses AWS-managed encryption, point-in-time recovery and Retain deletion policy. Roles receive access scoped to that table. The diagnostic has no public function URL or API Gateway route.
+
+### Validation and remaining live checks
+
+- 121 targeted backend tests and 32 subtests pass, including model parameters/profiles, summary replay, private probe registration/failure/caching/routing, quota rejection/concurrency contracts, policy changes, output ceilings, local titles, original attachment regressions and deployment-helper guards.
+- 84 frontend tests pass, including editing/saving caps, conflict recovery, employee override drafts, fresh private usage reads, empty access/loading policies, remembered-model changes, heartbeats, existing Stop/export and workspace controls. Lint has zero warnings; TypeScript/Vite production build passes.
+- 66 CDK tests and TypeScript build pass. CDK assertions synthesize with dependency bundling skipped; the AWS deployment still packages dependencies through the existing CodeBuild job. Tests verify retention/encryption/PITR/TTL, shared chat/probe role, baseline allowlist wiring and absence of public probe invocation permissions.
+- Local quota concurrency tests use a no-network transaction fixture and verify the all-or-nothing client contract; the deployed DynamoDB/IAM path still needs its live check. Model adapter unit tests do not prove account entitlement.
+
+After the helper reports a successful build and completed frontier checks, refresh the app/catalog. Verify each enabled model can stream, stop, reload its partial answer and continue with files; the private probe already tests a reasoning-enabled follow-up. Set a small temporary test employee cap, send concurrently from two tabs, verify the precise boundary/other-model behavior, then restore the intended allocation. Verify model allowlist changes, employee isolation, admin-only policy writes and narrow/mobile layout. Real mobile keyboard, broader load/latency, backup/restore and operational-readiness gates remain.
+
+Sources used for the integration:
+- https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-opus-5-5.html
+- https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-sonnet-5-5.html
+- https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-haiku-5-5.html
+- https://docs.aws.amazon.com/bedrock/latest/userguide/claude-messages-adaptive-thinking.html
+- https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-2-sol.html
+- https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-2-astra.html
+- https://docs.aws.amazon.com/bedrock/latest/userguide/quotas.html

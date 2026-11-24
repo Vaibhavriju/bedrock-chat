@@ -172,11 +172,13 @@ class TestGetModelId(unittest.TestCase):
                 self.assertNotIn("temperature", args["inferenceConfig"])
                 self.assertNotIn("topP", args["inferenceConfig"])
                 self.assertNotIn("top_k", args["additionalModelRequestFields"])
-                if enable_reasoning:
-                    self.assertEqual(
-                        args["additionalModelRequestFields"]["thinking"],
-                        {"type": "adaptive"},
-                    )
+                self.assertEqual(
+                    args["additionalModelRequestFields"]["thinking"],
+                    {
+                        "type": "adaptive",
+                        "display": "summarized" if enable_reasoning else "omitted",
+                    },
+                )
 
     def test_get_model_id_openai_gpt_6(self):
         """GPT-6 is inference-profile only: global. everywhere, us. in North America"""
@@ -226,7 +228,7 @@ class TestOpenAIGpt6Params(unittest.TestCase):
                     self.assertEqual(
                         config,
                         {
-                            "inferenceConfig": {"maxTokens": 4096},
+                            "inferenceConfig": {"maxTokens": 32768},
                             **(summary if enable_reasoning else {}),
                         },
                     )

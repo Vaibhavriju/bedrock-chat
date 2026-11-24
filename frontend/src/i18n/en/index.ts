@@ -20,6 +20,25 @@ const translation = {
       userGroups: 'User Groups',
     },
     model: {
+      'claude-v5.5-sonnet': {
+        label: 'Claude Sonnet 5.5',
+        description:
+          'Coding, documents and everyday knowledge work with adaptive thinking.',
+      },
+      'claude-v5.5-haiku': {
+        label: 'Claude Haiku 5.5',
+        description:
+          'Fast drafting, summaries and high-volume work with optional reasoning.',
+      },
+      'gpt-6.2-sol': {
+        label: 'GPT-6.2 Sol',
+        description:
+          'Everyday coding, technical writing and business workflows.',
+      },
+      'gpt-6.2-astra': {
+        label: 'GPT-6.2 Astra',
+        description: 'Complex coding, analysis and longer technical projects.',
+      },
       'claude-v4-opus': {
         label: 'Claude 4 (Opus)',
         description:
@@ -124,7 +143,11 @@ const translation = {
         description:
           'A highly capable multimodal model with the best combination of accuracy, speed, and cost for a wide range of tasks.',
       },
-      'amazon-nova-2-lite': {label: 'Amazon Nova 2 Lite', description: 'Amazon model for drafting, summaries, source files and extracted documents.'},
+      'amazon-nova-2-lite': {
+        label: 'Amazon Nova 2 Lite',
+        description:
+          'Amazon model for drafting, summaries, source files and extracted documents.',
+      },
       'amazon-nova-lite': {
         label: 'Amazon Nova Lite',
         description:
@@ -573,7 +596,8 @@ How would you categorize this email?`,
         title: 'Prompt Caching',
         promptCachingEnabled: {
           title: 'Use prompt caching if the model supports it.',
-          description: 'If enabled, it may reduce the cost and latency of repeated conversations with this bot.',
+          description:
+            'If enabled, it may reduce the cost and latency of repeated conversations with this bot.',
         },
       },
     },
@@ -1046,7 +1070,7 @@ How would you categorize this email?`,
             'This bot is published as API by administrator. Published API must be shared with all users.',
         },
       },
-      invalidMermaidFormat: "Error in diagram drawing"
+      invalidMermaidFormat: 'Error in diagram drawing',
     },
     validation: {
       title: 'Validation Error',

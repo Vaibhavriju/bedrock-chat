@@ -86,3 +86,17 @@ def test_cleanup_failure_does_not_turn_a_saved_answer_into_an_error():
     table.update_item.side_effect = RuntimeError("storage temporarily unavailable")
     with GenerationMonitor(table, "connection", "user-a"):
         pass
+
+
+def test_heartbeat_keeps_a_long_reasoning_wait_alive_without_cancelling():
+    heartbeat = Event()
+    with GenerationMonitor(
+        MemoryTable(),
+        "connection",
+        "user-a",
+        interval=0.001,
+        on_heartbeat=heartbeat.set,
+        heartbeat_interval=0.002,
+    ) as signal:
+        assert heartbeat.wait(0.5)
+        assert not signal.is_set()

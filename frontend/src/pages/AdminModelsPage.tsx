@@ -15,6 +15,13 @@ type CatalogModel = {
   profileIds: string[];
   access: string;
   detail: string;
+  runtimeTest?: {
+    passed?: boolean;
+    ready: boolean;
+    profileId?: string;
+    checkedAt: string;
+    attempts: { profileId?: string; errorCode?: string; error: string }[];
+  } | null;
 };
 type Catalog = {
   region: string;
@@ -28,6 +35,7 @@ const accessLabels: Record<string, string> = {
   restricted: 'Activation or permission required',
   pending: 'Activation pending',
   unknown: 'Access not confirmed',
+  agreement_required: 'Provider agreement not available',
   not_checked: 'Catalog listing only',
 };
 
@@ -38,6 +46,8 @@ export default function AdminModelsPage() {
     isAdmin ? 'admin/models' : null,
     { revalidateOnFocus: false, shouldRetryOnError: false }
   );
+  const [refreshing, setRefreshing] = useState(false);
+  const [reloadError, setReloadError] = useState('');
   const [search, setSearch] = useState('');
   const [scope, setScope] = useState('relevant');
   const models = useMemo(
@@ -84,10 +94,25 @@ export default function AdminModelsPage() {
         </div>
         <button
           type="button"
-          onClick={() => void mutate()}
-          disabled={isValidating}
+          onClick={async () => {
+            setRefreshing(true);
+            setReloadError('');
+            try {
+              const result = await http.getOnce<Catalog>('admin/models', {
+                refresh: true,
+              });
+              await mutate(result.data, { revalidate: false });
+            } catch {
+              setReloadError('Could not refresh model access. Please retry.');
+            } finally {
+              setRefreshing(false);
+            }
+          }}
+          disabled={isValidating || refreshing}
           className="flex items-center gap-2 rounded-xl border border-gray/25 bg-white px-4 py-2 text-sm font-medium disabled:opacity-50 dark:bg-aws-ui-color-dark">
-          <PiArrowsClockwise className={isValidating ? 'animate-spin' : ''} />
+          <PiArrowsClockwise
+            className={isValidating || refreshing ? 'animate-spin' : ''}
+          />
           Reload
         </button>
       </div>
@@ -132,6 +157,11 @@ export default function AdminModelsPage() {
           Checking the Bedrock catalog…
         </p>
       )}
+      {reloadError && (
+        <p role="alert" className="mb-3 text-sm text-red">
+          {reloadError}
+        </p>
+      )}
       {error && (
         <div
           role="alert"
@@ -173,7 +203,9 @@ export default function AdminModelsPage() {
                     : 'App integration required'}
               </span>
               <span className="rounded-full bg-gray/10 px-2.5 py-1">
-                {accessLabels[model.access] || 'Access not confirmed'}
+                {model.runtimeTest?.passed
+                  ? 'Runtime invocation verified'
+                  : accessLabels[model.access] || 'Access not confirmed'}
               </span>
               <span className="rounded-full bg-gray/10 px-2.5 py-1">
                 {model.streaming ? 'Streaming listed' : 'No streaming listed'}
@@ -182,6 +214,25 @@ export default function AdminModelsPage() {
                 {model.lifecycle}
               </span>
             </div>
+            {model.runtimeTest && (
+              <div className="mt-3 text-xs leading-relaxed">
+                <p>
+                  {model.runtimeTest.passed
+                    ? `Streaming, reasoning and follow-up verified on ${model.runtimeTest.profileId}.`
+                    : 'Runtime check did not pass. This model was not enabled.'}
+                </p>
+                <p>
+                  Tested:{' '}
+                  {new Date(model.runtimeTest.checkedAt).toLocaleString()}
+                </p>
+                {!model.runtimeTest.passed &&
+                  model.runtimeTest.attempts.map((attempt, index) => (
+                    <p key={index} className="mt-1 wrap-break-word">
+                      {attempt.errorCode}: {attempt.error}
+                    </p>
+                  ))}
+              </div>
+            )}
             <p className="mt-4 text-sm leading-relaxed opacity-65">
               {model.detail}
             </p>

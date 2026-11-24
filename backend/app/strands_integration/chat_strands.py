@@ -6,6 +6,7 @@ import json
 import logging
 from typing import Callable
 from threading import Event
+from botocore.config import Config
 
 from app.agents.tools.agent_tool import ToolRunResult
 from app.bedrock import calculate_price, BedrockGuardrailsModel
@@ -51,6 +52,8 @@ def converse_with_strands(
     on_tool_result: Callable[[ToolRunResult], None] | None = None,
     on_reasoning: Callable[[str], None] | None = None,
     cancel_signal: Event | None = None,
+    runtime_model_id: str | None = None,
+    model_client_config: Config | None = None,
 ) -> OnStopInput:
     """
     Chat with Strands agents.
@@ -97,6 +100,8 @@ def converse_with_strands(
         prompt_caching_enabled=prompt_caching_enabled,
         has_tools=has_tools,
         hooks=[tool_capture],
+        runtime_model_id=runtime_model_id,
+        model_client_config=model_client_config,
     )
 
     thinking_log: list[SimpleMessageModel] = []

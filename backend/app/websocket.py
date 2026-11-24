@@ -10,6 +10,7 @@ from typing import BinaryIO, Literal, TypedDict
 
 import boto3
 from app.agents.tools.agent_tool import ToolRunResult
+from app.usage_control import UsageLimitExceeded, UsageControlUnavailable
 from app.generation_control import begin_generation, request_stop, GenerationMonitor
 from botocore.config import Config
 from botocore.exceptions import ClientError
@@ -224,6 +225,21 @@ def process_chat_input(
 
         return {"statusCode": 200, "body": "Message sent."}
 
+    except UsageLimitExceeded as error:
+        return {
+            "statusCode": 429,
+            "body": json.dumps({"status": "ERROR", "reason": str(error)}),
+        }
+    except UsageControlUnavailable:
+        return {
+            "statusCode": 503,
+            "body": json.dumps(
+                {
+                    "status": "ERROR",
+                    "reason": "Usage limits could not be verified. Please retry shortly.",
+                }
+            ),
+        }
     except RecordNotFoundError:
         if chat_input.bot_id:
             return {
@@ -399,7 +415,11 @@ def handler(event, context):
             # Process the concatenated full message
             chat_input = ChatInput(**json.loads(full_message))
             with GenerationMonitor(
-                table, connection_id, user_id, cancel_signal=notificator.cancel_signal
+                table,
+                connection_id,
+                user_id,
+                cancel_signal=notificator.cancel_signal,
+                on_heartbeat=lambda: notificator.notify(b'{"status":"HEARTBEAT"}'),
             ) as cancel_signal:
                 return process_chat_input(
                     user=user,

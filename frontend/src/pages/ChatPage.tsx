@@ -57,6 +57,7 @@ import ButtonStar from '../components/ButtonStar.tsx';
 import MenuBot from '../components/MenuBot.tsx';
 import ChatWelcome from '../components/ChatWelcome';
 import ConversationExportDialog from '../components/ConversationExportDialog';
+import UsageDialog from '../components/UsageDialog';
 
 // ChatMessageWithRelatedDocuments component moved outside to prevent re-creation on every render
 type ChatMessageWithRelatedDocumentsProps = {
@@ -183,6 +184,14 @@ const ChatPage: React.FC = () => {
   const { open: openSnackbar } = useSnackbar();
   const { errorDetail } = usePostMessageStreaming();
   const { isAdmin } = useLoginUser();
+  const {
+    disabledImageUpload,
+    availableModels,
+    modelId: activeModelId,
+    isLoadingModels,
+    modelConfigError,
+  } = useModel();
+  const [showUsage, setShowUsage] = useState(false);
   const { pinBot, unpinBot } = useBotPinning();
 
   const {
@@ -298,8 +307,11 @@ const ChatPage: React.FC = () => {
   }, [messages]);
 
   const disabledInput = useMemo(() => {
-    return botId !== null && !isAvailabilityBot && !isLoadingBot;
-  }, [botId, isAvailabilityBot, isLoadingBot]);
+    return (
+      availableModels.length === 0 ||
+      (botId !== null && !isAvailabilityBot && !isLoadingBot)
+    );
+  }, [availableModels.length, botId, isAvailabilityBot, isLoadingBot]);
 
   useEffect(() => {
     setConversationId(paramConversationId ?? '');
@@ -421,7 +433,6 @@ const ChatPage: React.FC = () => {
     navigate(`/bot/edit/${bot?.id}`);
   }, [bot?.id, navigate]);
 
-  const { disabledImageUpload } = useModel();
   const [dndMode, setDndMode] = useState(false);
   const [suggestedPrompt, setSuggestedPrompt] = useState<{
     text: string;
@@ -601,6 +612,12 @@ const ChatPage: React.FC = () => {
                 .replace(/-/g, ' ')}
             </div>
           )}
+          <button
+            type="button"
+            className="ml-2 shrink-0 rounded-lg border border-gray/20 px-3 py-2 text-sm"
+            onClick={() => setShowUsage(true)}>
+            Your usage
+          </button>
           {messages.length > 0 && (
             <button
               type="button"
@@ -767,6 +784,15 @@ const ChatPage: React.FC = () => {
           </div>
         )}
 
+        {availableModels.length === 0 && (
+          <p role="status" className="mb-2 px-4 text-sm">
+            {isLoadingModels
+              ? 'Loading available models…'
+              : modelConfigError
+                ? 'Could not load available models. Refresh the page to retry.'
+                : 'No models are currently available for your employee account. Contact your workspace administrator.'}
+          </p>
+        )}
         <InputChatContent
           className="w-full max-w-4xl"
           suggestedPrompt={suggestedPrompt}
@@ -774,13 +800,15 @@ const ChatPage: React.FC = () => {
           disabledSend={
             postingMessage || hasError || isLastAssistantMessageEmpty
           }
-          disabledRegenerate={postingMessage || hasError}
-          disabledContinue={postingMessage || hasError}
+          disabledRegenerate={postingMessage || hasError || disabledInput}
+          disabledContinue={postingMessage || hasError || disabledInput}
           disabled={disabledInput}
           placeholder={
-            disabledInput
-              ? t('bot.label.notAvailableBotInputMessage')
-              : undefined
+            availableModels.length === 0
+              ? 'No models are available for your account.'
+              : disabledInput
+                ? t('bot.label.notAvailableBotInputMessage')
+                : undefined
           }
           canRegenerate={messages.length > 1}
           canContinue={getShouldContinue()}
@@ -798,6 +826,12 @@ const ChatPage: React.FC = () => {
         />
       </div>
       <BottomHelper />
+      {showUsage && (
+        <UsageDialog
+          model={getPostedModel() || activeModelId}
+          onClose={() => setShowUsage(false)}
+        />
+      )}
       {exportTarget && (
         <ConversationExportDialog
           isOpen
