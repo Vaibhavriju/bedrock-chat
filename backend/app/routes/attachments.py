@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
+import base64
 from pydantic import Field
 
 from urllib.parse import quote
@@ -54,4 +55,23 @@ def preview_upload(request: Request, upload_id: str):
         "preview": preview,
         "previewTruncated": manifest["characters"] > 20_000,
         "downloadUrl": url,
+    }
+
+
+@router.get("/attachments/{upload_id}/text")
+def export_upload_text(request: Request, upload_id: str, response: Response):
+    """Return the owner's complete extracted text, without signed URLs or S3 keys."""
+    response.headers["Cache-Control"] = "private, no-store"
+    root = prefix(request.state.current_user.id, upload_id)
+    manifest = read_manifest(root + "manifest.json", request.state.current_user.id)
+    text = None
+    if manifest["kind"] == "text":
+        _, payload = attachment_content(root + "manifest.json")
+        text = base64.b64encode(payload).decode("ascii")
+    return {
+        "filename": manifest["filename"],
+        "kind": manifest["kind"],
+        "characters": manifest["characters"],
+        "notice": manifest.get("notice", ""),
+        "textBase64": text,
     }

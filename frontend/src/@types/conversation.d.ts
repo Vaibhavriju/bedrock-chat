@@ -89,6 +89,7 @@ export type SimpleMessage = {
 };
 
 export type MessageContent = {
+  stopped?: boolean;
   role: Role;
   content: Content[];
   model: Model;

@@ -100,3 +100,124 @@ describe('stream completion and failures', () => {
     await promise;
   });
 });
+
+describe('stopping a response', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('WebSocket', FakeSocket);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+  const begin = async () => {
+    const promise = usePostMessageStreaming
+      .getState()
+      .post({ input, handleStreamingEvent: vi.fn() });
+    await vi.advanceTimersByTimeAsync(0);
+    const socket = FakeSocket.latest;
+    socket.onopen?.();
+    socket.onmessage?.({ data: 'Session started.' });
+    socket.onmessage?.({ data: 'Message part received.' });
+    return { promise, socket };
+  };
+  it('can stop immediately while authentication is still resolving', async () => {
+    const promise = usePostMessageStreaming
+      .getState()
+      .post({ input, handleStreamingEvent: vi.fn() });
+    usePostMessageStreaming.getState().stop();
+    await expect(promise).resolves.toEqual({
+      cancelled: true,
+      persisted: false,
+    });
+    expect(usePostMessageStreaming.getState().isActive).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('can stop during the socket handshake without sending the model request', async () => {
+    const promise = usePostMessageStreaming
+      .getState()
+      .post({ input, handleStreamingEvent: vi.fn() });
+    await vi.advanceTimersByTimeAsync(0);
+    const socket = FakeSocket.latest;
+    usePostMessageStreaming.getState().stop();
+    await expect(promise).resolves.toEqual({
+      cancelled: true,
+      persisted: false,
+    });
+    expect(socket.send).not.toHaveBeenCalled();
+    expect(socket.close).toHaveBeenCalled();
+  });
+  it('requests authenticated server cancellation once and waits for persisted completion', async () => {
+    const { promise, socket } = await begin();
+    usePostMessageStreaming.getState().stop();
+    usePostMessageStreaming.getState().stop();
+    expect(
+      socket.send.mock.calls
+        .map(([body]) => JSON.parse(body))
+        .filter((frame) => frame.step === 'CANCEL')
+    ).toEqual([{ step: 'CANCEL', token: 'synthetic-test-token' }]);
+    socket.onmessage?.({ data: JSON.stringify({ status: 'STOP_REQUESTED' }) });
+    expect(usePostMessageStreaming.getState().isActive).toBe(true);
+    expect(usePostMessageStreaming.getState().isStopping).toBe(true);
+    expect(socket.close).not.toHaveBeenCalled();
+    socket.onmessage?.({
+      data: JSON.stringify({
+        status: PostStreamingStatus.STREAMING_END,
+        stop_reason: 'cancelled',
+      }),
+    });
+    await expect(promise).resolves.toEqual({
+      cancelled: true,
+      persisted: true,
+    });
+    expect(usePostMessageStreaming.getState().isStopping).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('keeps a naturally completed response complete if Stop arrived too late', async () => {
+    const { promise, socket } = await begin();
+    usePostMessageStreaming.getState().stop();
+    socket.onmessage?.({
+      data: JSON.stringify({
+        status: 'STOP_REJECTED',
+        reason: 'Already finished',
+      }),
+    });
+    socket.onmessage?.({
+      data: JSON.stringify({
+        status: PostStreamingStatus.STREAMING_END,
+        stop_reason: 'end_turn',
+      }),
+    });
+    await expect(promise).resolves.toEqual({
+      cancelled: false,
+      persisted: true,
+    });
+    expect(usePostMessageStreaming.getState().errorDetail).toBeNull();
+  });
+  it('does not report a successful stop if the connection disappears before confirmation', async () => {
+    const { promise, socket } = await begin();
+    const rejected = expect(promise).rejects.toThrow('Could not confirm');
+    usePostMessageStreaming.getState().stop();
+    socket.onclose?.();
+    await rejected;
+    expect(usePostMessageStreaming.getState().isActive).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it('refuses a second in-flight request without losing the original stop control', async () => {
+    const { promise, socket } = await begin();
+    await expect(
+      usePostMessageStreaming
+        .getState()
+        .post({ input, handleStreamingEvent: vi.fn() })
+    ).rejects.toThrow('Another response');
+    usePostMessageStreaming.getState().stop();
+    expect(usePostMessageStreaming.getState().isStopping).toBe(true);
+    socket.onmessage?.({
+      data: JSON.stringify({
+        status: PostStreamingStatus.STREAMING_END,
+        stop_reason: 'cancelled',
+      }),
+    });
+    await promise;
+  });
+});

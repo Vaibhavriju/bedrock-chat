@@ -8,6 +8,7 @@ import {
   PiUserFill,
   PiThumbsDown,
   PiThumbsDownFill,
+  PiCopySimple,
 } from 'react-icons/pi';
 import { BaseProps } from '../@types/common';
 import {
@@ -31,6 +32,7 @@ import { AgentToolsProps } from '../features/agent/types';
 import { convertThinkingLogToAgentToolProps } from '../features/agent/utils/AgentUtils';
 import { convertUsedChunkToRelatedDocument } from '../utils/MessageUtils';
 import ReasoningCard from '../features/reasoning/components/ReasoningCard';
+import { messageText } from '../utils/conversationExport';
 
 type Props = BaseProps & {
   tools?: AgentToolsProps[];
@@ -41,6 +43,7 @@ type Props = BaseProps & {
   onChangeMessageId?: (messageId: string) => void;
   onSubmit?: (messageId: string, content: string) => void;
   onSubmitFeedback?: (messageId: string, feedback: PutFeedbackRequest) => void;
+  onExportTurn?: () => void;
 };
 
 const ChatMessage: React.FC<Props> = (props) => {
@@ -395,9 +398,17 @@ const ChatMessage: React.FC<Props> = (props) => {
       </div>
 
       <div className="mt-3 ml-12">
+        {chatContent?.stopped && (
+          <p
+            role="status"
+            className="mb-2 text-xs text-dark-gray dark:text-light-gray">
+            Generation stopped. This answer may be incomplete.
+          </p>
+        )}
         <div className="flex items-center">
           {chatContent?.role === 'user' && !isEdit && (
             <ButtonIcon
+              label="Edit prompt"
               className="text-dark-gray dark:text-light-gray"
               onClick={() => {
                 const textContent = chatContent.content[
@@ -409,9 +420,17 @@ const ChatMessage: React.FC<Props> = (props) => {
               <PiNotePencil />
             </ButtonIcon>
           )}
+          {chatContent?.role === 'user' && (
+            <ButtonCopy
+              label="Copy prompt"
+              text={messageText(chatContent)}
+              className="text-dark-gray dark:text-light-gray"
+            />
+          )}
           {chatContent?.role === 'assistant' && (
             <div className="flex">
               <ButtonIcon
+                label="Give feedback"
                 className="text-dark-gray dark:text-light-gray"
                 onClick={() => setIsFeedbackOpen(true)}>
                 {chatContent.feedback && !chatContent.feedback.thumbsUp ? (
@@ -421,17 +440,19 @@ const ChatMessage: React.FC<Props> = (props) => {
                 )}
               </ButtonIcon>
               <ButtonCopy
+                label="Copy answer as Markdown"
                 className="text-dark-gray dark:text-light-gray"
-                text={
-                  chatContent.content.find((c) => c.contentType === 'text')
-                    ? (
-                        chatContent.content.find(
-                          (c) => c.contentType === 'text'
-                        ) as TextContent
-                      ).body
-                    : ''
-                }
+                text={messageText(chatContent)}
               />
+              {props.onExportTurn && (
+                <ButtonIcon
+                  label="Copy request and response"
+                  disabled={props.isStreaming}
+                  className="text-dark-gray dark:text-light-gray"
+                  onClick={props.onExportTurn}>
+                  <PiCopySimple />
+                </ButtonIcon>
+              )}
             </div>
           )}
         </div>

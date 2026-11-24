@@ -14,7 +14,9 @@ import {
 } from '../@types/conversation';
 import useConversation from './useConversation';
 import { create } from 'zustand';
-import usePostMessageStreaming from './usePostMessageStreaming';
+import usePostMessageStreaming, {
+  StreamResult,
+} from './usePostMessageStreaming';
 import { ulid } from 'ulid';
 import { convertMessageMapToArray } from '../utils/MessageUtils';
 import useModel from './useModel';
@@ -61,6 +63,7 @@ const getTextContentBody = (content: Content[]): string => {
 
 const useChatState = create<{
   conversationId: string;
+  viewVersion: number;
   setConversationId: (s: string) => void;
   postingMessage: boolean;
   setPostingMessage: (b: boolean) => void;
@@ -93,12 +96,13 @@ const useChatState = create<{
 }>((set, get) => {
   return {
     conversationId: '',
+    viewVersion: 0,
     setConversationId: (s) => {
-      set(() => {
-        return {
-          conversationId: s,
-        };
-      });
+      set((state) =>
+        state.conversationId === s
+          ? {}
+          : { conversationId: s, viewVersion: state.viewVersion + 1 }
+      );
     },
     postingMessage: false,
     setPostingMessage: (b) => {
@@ -158,6 +162,9 @@ const useChatState = create<{
     editMessage: (id: string, messageId: string, content: string) => {
       set(() => ({
         chats: produce(get().chats, (draft) => {
+          if (!draft[id]?.[messageId]) {
+            return;
+          }
           const textContent = draft[id][messageId].content.find(
             (c) => c.contentType === 'text'
           );
@@ -170,6 +177,9 @@ const useChatState = create<{
     removeMessage: (id: string, messageId: string) => {
       set((state) => ({
         chats: produce(state.chats, (draft) => {
+          if (!draft[id]?.[messageId]) {
+            return;
+          }
           const childrenIds = [...draft[id][messageId].children];
 
           // childrenに設定されているノードも全て削除
@@ -237,7 +247,9 @@ const useChatState = create<{
 });
 
 const useChat = () => {
-  const [streamingState, streamingSend, streamingActor] = useMachine(streamingStateMachine);
+  const [streamingState, streamingSend, streamingActor] = useMachine(
+    streamingStateMachine
+  );
 
   const {
     chats,
@@ -263,7 +275,12 @@ const useChat = () => {
     setReasoningEnabled,
   } = useChatState();
 
-  const { post: postStreaming } = usePostMessageStreaming();
+  const {
+    post: postStreaming,
+    stop: stopGeneration,
+    isActive: canStop,
+    isStopping: stoppingMessage,
+  } = usePostMessageStreaming();
   const { modelId, setModelId, availableModels } = useModel();
 
   const conversationApi = useConversationApi();
@@ -289,9 +306,54 @@ const useChat = () => {
   }, [conversationId, chats, currentMessageId]);
 
   const newChat = useCallback(() => {
+    stopGeneration();
+    useChatState.setState((state) => ({
+      viewVersion: state.viewVersion + 1,
+      currentMessageId: '',
+    }));
     setConversationId('');
     setMessages('', {});
-  }, [setConversationId, setMessages]);
+  }, [setConversationId, setMessages, stopGeneration]);
+
+  const markStopped = (id: string, messageId: string) => {
+    useChatState.setState((state) => ({
+      chats: produce(state.chats, (draft) => {
+        const message = draft[id]?.[messageId];
+        if (!message) {
+          return;
+        }
+        message.stopped = true;
+        if (!getTextContentBody(message.content).trim()) {
+          message.content = [
+            {
+              contentType: 'text',
+              body: 'Generation stopped before an answer was produced.',
+            },
+          ];
+        }
+      }),
+    }));
+  };
+
+  const replayFiles = (message: DisplayMessageContent) => ({
+    attachments: message.content.flatMap((c) =>
+      c.contentType === 'attachment'
+        ? [
+            {
+              fileName: c.fileName || 'Attachment',
+              fileType: '',
+              extractedContent: c.body,
+              objectKey: c.objectKey,
+            },
+          ]
+        : []
+    ),
+    base64EncodedImages: message.content.flatMap((c) =>
+      c.contentType === 'image'
+        ? [`data:${c.mediaType || 'image/png'};base64,${c.body}`]
+        : []
+    ),
+  });
 
   // when updated messages
   useEffect(() => {
@@ -368,6 +430,12 @@ const useChat = () => {
     attachments?: AttachmentType[];
     bot?: BotInputType;
   }) => {
+    if (useChatState.getState().postingMessage) {
+      return;
+    }
+    const originVersion = useChatState.getState().viewVersion;
+    const stillDisplaying = () =>
+      useChatState.getState().viewVersion === originVersion;
     const { content, bot, base64EncodedImages, attachments } = params;
     const isNewChat = conversationId ? false : true;
     const newConversationId = ulid();
@@ -434,20 +502,29 @@ const useChat = () => {
       botId: bot?.botId,
       enableReasoning: params.enableReasoning,
     };
-    const createNewConversation = () => {
-      // Copy State to prevent screen flicker
-      copyMessages('', newConversationId);
-
-      conversationApi
-        .updateTitleWithGeneratedTitle(newConversationId)
-        .then(() => {
-          setConversationId(newConversationId);
-        })
-        .finally(() => {
-          syncConversations().then(() => {
-            setIsGeneratedTitle(true);
-          });
-        });
+    const createNewConversation = async (cancelled: boolean) => {
+      if (stillDisplaying()) {
+        copyMessages('', newConversationId);
+      }
+      try {
+        if (cancelled) {
+          // Stopping an accidental send should not launch another title-model call.
+          await conversationApi.updateTitle(
+            newConversationId,
+            content.trim().slice(0, 80) || 'Stopped conversation'
+          );
+        } else {
+          await conversationApi.updateTitleWithGeneratedTitle(
+            newConversationId
+          );
+        }
+      } catch {
+        /* A title failure must not lose an already saved conversation. */
+      }
+      if (stillDisplaying()) {
+        setConversationId(newConversationId);
+      }
+      await syncConversations();
     };
 
     setPostingMessage(true);
@@ -456,10 +533,16 @@ const useChat = () => {
     pushNewMessage(parentMessageId, messageContent);
 
     // post message
-    const postPromise = new Promise<void>((resolve, reject) => {
+    const postPromise = new Promise<StreamResult>((resolve, reject) => {
       if (USE_STREAMING) {
-        const subscription = streamingActor.subscribe(state => {
-          editMessage(conversationId, NEW_MESSAGE_ID.ASSISTANT, state.context.text);
+        const subscription = streamingActor.subscribe((state) => {
+          if (stillDisplaying()) {
+            editMessage(
+              conversationId,
+              NEW_MESSAGE_ID.ASSISTANT,
+              state.context.text
+            );
+          }
         });
         postStreaming({
           input,
@@ -467,9 +550,7 @@ const useChat = () => {
             streamingSend(event);
           },
         })
-          .then(() => {
-            resolve();
-          })
+          .then(resolve)
           .catch((e) => {
             reject(e);
           })
@@ -482,7 +563,7 @@ const useChat = () => {
           .then((res) => {
             const textBody = getTextContentBody(res.data.message.content);
             editMessage(conversationId, NEW_MESSAGE_ID.ASSISTANT, textBody);
-            resolve();
+            resolve({ cancelled: false, persisted: true });
           })
           .catch((e) => {
             reject(e);
@@ -491,11 +572,16 @@ const useChat = () => {
     });
 
     postPromise
-      .then(() => {
-        if (isNewChat) {
-          createNewConversation();
-        } else {
-          mutate();
+      .then(async (result) => {
+        if (result.cancelled && stillDisplaying()) {
+          markStopped(conversationId, NEW_MESSAGE_ID.ASSISTANT);
+        }
+        if (result.persisted) {
+          if (isNewChat) {
+            await createNewConversation(result.cancelled);
+          } else {
+            await mutate();
+          }
         }
       })
       .catch((e) => {
@@ -514,6 +600,12 @@ const useChat = () => {
     messageId?: string;
     bot?: BotInputType;
   }) => {
+    if (useChatState.getState().postingMessage) {
+      return;
+    }
+    const originVersion = useChatState.getState().viewVersion;
+    const stillDisplaying = () =>
+      useChatState.getState().viewVersion === originVersion;
     setPostingMessage(true);
 
     const messageContent: MessageContent = {
@@ -540,8 +632,14 @@ const useChat = () => {
     const currentMessage = messages[messages.length - 1];
 
     // WARNING: Non-streaming is not supported from the UI side as it is planned to be DEPRICATED.
-    const subscription = streamingActor.subscribe(state => {
-      editMessage(conversationId, currentMessage.id, currentContentBody + state.context.text);
+    const subscription = streamingActor.subscribe((state) => {
+      if (stillDisplaying()) {
+        editMessage(
+          conversationId,
+          currentMessage.id,
+          currentContentBody + state.context.text
+        );
+      }
     });
     postStreaming({
       input,
@@ -549,8 +647,13 @@ const useChat = () => {
         streamingSend(event);
       },
     })
-      .then(() => {
-        mutate();
+      .then(async (result) => {
+        if (result.cancelled && stillDisplaying()) {
+          markStopped(conversationId, currentMessage.id);
+        }
+        if (result.persisted) {
+          await mutate();
+        }
       })
       .catch((e) => {
         console.error(e);
@@ -571,6 +674,26 @@ const useChat = () => {
     messageId?: string;
     bot?: BotInputType;
   }) => {
+    if (useChatState.getState().postingMessage) {
+      return;
+    }
+    const originVersion = useChatState.getState().viewVersion;
+    const stillDisplaying = () =>
+      useChatState.getState().viewVersion === originVersion;
+    if (!conversationId) {
+      const userMessage = [...messages]
+        .reverse()
+        .find((m) => m.role === 'user');
+      if (userMessage) {
+        postChat({
+          content: props?.content ?? getTextContentBody(userMessage.content),
+          enableReasoning: props?.enableReasoning ?? false,
+          bot: props?.bot,
+          ...replayFiles(userMessage),
+        });
+      }
+      return;
+    }
     let index: number = -1;
     // messageIdが指定されている場合は、指定されたメッセージをベースにする
     if (props?.messageId) {
@@ -642,8 +765,14 @@ const useChat = () => {
 
     setCurrentMessageId(NEW_MESSAGE_ID.ASSISTANT);
 
-    const subscription = streamingActor.subscribe(state => {
-      editMessage(conversationId, NEW_MESSAGE_ID.ASSISTANT, state.context.text);
+    const subscription = streamingActor.subscribe((state) => {
+      if (stillDisplaying()) {
+        editMessage(
+          conversationId,
+          NEW_MESSAGE_ID.ASSISTANT,
+          state.context.text
+        );
+      }
     });
     postStreaming({
       input,
@@ -651,8 +780,13 @@ const useChat = () => {
         streamingSend(event);
       },
     })
-      .then(() => {
-        mutate();
+      .then(async (result) => {
+        if (result.cancelled && stillDisplaying()) {
+          markStopped(conversationId, NEW_MESSAGE_ID.ASSISTANT);
+        }
+        if (result.persisted) {
+          await mutate();
+        }
       })
       .catch((e) => {
         console.error(e);
@@ -672,6 +806,9 @@ const useChat = () => {
 
   return {
     streamingState,
+    stopGeneration,
+    canStop,
+    stoppingMessage,
     hasError,
     setConversationId,
     conversationId,
@@ -710,6 +847,7 @@ const useChat = () => {
         const latestMessageBody = getTextContentBody(latestMessage.content);
         postChat({
           content: params.content ?? latestMessageBody,
+          ...replayFiles(latestMessage),
           enableReasoning: params.enableReasoning,
           bot: params.bot
             ? {

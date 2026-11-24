@@ -742,6 +742,7 @@ class SimpleMessageModel(BaseModel):
 
 
 class MessageModel(BaseModel):
+    stopped: bool = False
     role: str
     content: list[ContentModel]
     model: type_model_name

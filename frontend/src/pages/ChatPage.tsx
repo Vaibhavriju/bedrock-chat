@@ -15,6 +15,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   PiArrowsCounterClockwise,
   PiArrowDown,
+  PiExport,
   PiPenNib,
   PiWarningCircleFill,
 } from 'react-icons/pi';
@@ -55,6 +56,7 @@ import { twMerge } from 'tailwind-merge';
 import ButtonStar from '../components/ButtonStar.tsx';
 import MenuBot from '../components/MenuBot.tsx';
 import ChatWelcome from '../components/ChatWelcome';
+import ConversationExportDialog from '../components/ConversationExportDialog';
 
 // ChatMessageWithRelatedDocuments component moved outside to prevent re-creation on every render
 type ChatMessageWithRelatedDocumentsProps = {
@@ -70,6 +72,7 @@ type ChatMessageWithRelatedDocumentsProps = {
   onChangeMessageId?: (messageId: string) => void;
   onSubmit?: (messageId: string, content: string) => void;
   onSubmitFeedback?: (messageId: string, feedback: PutFeedbackRequest) => void;
+  onExportTurn?: () => void;
 };
 
 const ChatMessageWithRelatedDocuments: React.FC<ChatMessageWithRelatedDocumentsProps> =
@@ -162,6 +165,7 @@ const ChatMessageWithRelatedDocuments: React.FC<ChatMessageWithRelatedDocumentsP
         onChangeMessageId={props.onChangeMessageId}
         onSubmit={props.onSubmit}
         onSubmitFeedback={props.onSubmitFeedback}
+        onExportTurn={props.onExportTurn}
       />
     );
   });
@@ -185,6 +189,9 @@ const ChatPage: React.FC = () => {
     streamingState,
     conversationError,
     postingMessage,
+    stopGeneration,
+    canStop,
+    stoppingMessage,
     newChat,
     postChat,
     messages,
@@ -246,6 +253,10 @@ const ChatPage: React.FC = () => {
   } = useBotSummary(botId ?? undefined);
 
   const [pageTitle, setPageTitle] = useState('');
+  const [exportTarget, setExportTarget] = useState<{
+    messages: DisplayMessageContent[];
+    isTurn: boolean;
+  }>();
   const [isAvailabilityBot, setIsAvailabilityBot] = useState(false);
 
   useEffect(() => {
@@ -510,9 +521,9 @@ const ChatPage: React.FC = () => {
       onDrop={endDnd}
       onDragEnd={endDnd}>
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="workspace-chat-header relative z-10 flex h-14 shrink-0 items-center justify-between border-b border-gray/15 px-3 sm:h-16 sm:px-6">
-          <div className="flex w-full justify-between">
-            <div className="p-2">
+        <div className="workspace-chat-header relative z-10 flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-gray/15 px-3 py-2 sm:min-h-16 sm:px-6">
+          <div className="flex min-w-0 flex-1 items-center justify-between">
+            <div className="min-w-0 flex-1 p-2">
               <div className="flex min-w-0 items-center font-bold">
                 {isLoadingBot ? (
                   <Skeleton className="h-5 w-32" />
@@ -539,8 +550,7 @@ const ChatPage: React.FC = () => {
             )}
 
             {isAvailabilityBot && !isLoadingBot && (
-              <div className="absolute -top-1 right-0 flex h-full items-center">
-                <div className="h-full w-12 bg-linear-to-r from-transparent to-aws-paper-light dark:to-aws-paper-dark"></div>
+              <div className="flex shrink-0 items-center">
                 <div className="flex items-center bg-aws-paper-light dark:bg-aws-paper-dark">
                   {bot?.owned && (
                     <StatusSyncBot
@@ -590,6 +600,23 @@ const ChatPage: React.FC = () => {
                 ?.replace('claude-v', 'Claude ')
                 .replace(/-/g, ' ')}
             </div>
+          )}
+          {messages.length > 0 && (
+            <button
+              type="button"
+              aria-label="Export full conversation"
+              title="Copy or download the full conversation"
+              disabled={postingMessage}
+              className="ml-2 flex shrink-0 items-center gap-2 rounded-lg border border-gray/20 p-2 text-sm disabled:opacity-40"
+              onClick={() =>
+                setExportTarget({
+                  messages: structuredClone(messages),
+                  isTurn: false,
+                })
+              }>
+              <PiExport aria-hidden="true" />
+              <span className="hidden sm:inline">Export</span>
+            </button>
           )}
         </div>
         <section className="relative min-h-0 flex-1">
@@ -648,6 +675,18 @@ const ChatPage: React.FC = () => {
                         relatedDocuments={relatedDocuments ?? []}
                         onChangeMessageId={onChangeCurrentMessageId}
                         onSubmit={onSubmitEditedContent}
+                        onExportTurn={() => {
+                          const userMessage = array
+                            .slice(0, idx)
+                            .reverse()
+                            .find((m) => m.role === 'user');
+                          setExportTarget({
+                            messages: structuredClone(
+                              userMessage ? [userMessage, message] : [message]
+                            ),
+                            isTurn: true,
+                          });
+                        }}
                         onSubmitFeedback={(messageId, feedback) => {
                           if (conversationId) {
                             giveFeedback(messageId, feedback);
@@ -746,6 +785,8 @@ const ChatPage: React.FC = () => {
           canRegenerate={messages.length > 1}
           canContinue={getShouldContinue()}
           isLoading={postingMessage}
+          onStop={canStop ? stopGeneration : undefined}
+          stopping={stoppingMessage}
           isNewChat={messages.length == 0}
           onSend={onSend}
           onRegenerate={onRegenerate}
@@ -757,6 +798,14 @@ const ChatPage: React.FC = () => {
         />
       </div>
       <BottomHelper />
+      {exportTarget && (
+        <ConversationExportDialog
+          isOpen
+          messages={exportTarget.messages}
+          isTurn={exportTarget.isTurn}
+          onClose={() => setExportTarget(undefined)}
+        />
+      )}
     </div>
   );
 };

@@ -64,7 +64,7 @@ Check that no deployment override replaces the intended model list or defaults. 
 4. Try another user's reference and arbitrary S3 paths. Expect rejection. Test opening/downloading a file in its owner's history and deleting that chat, including retrying a partial deletion.
 5. Verify an existing pre-release conversation with inline attachments still opens and can continue.
 6. Exercise the recommended models and optional Kimi/DeepSeek separately. Record first-token time and full response time for short chat, long document and code tasks. No live model-latency benchmark has been performed by the code author.
-7. Test mobile-width layout, keyboard navigation, IME entry, dark mode and a long streaming code block. The coding agent's remote browser could not reach the local Storybook preview; a visual browser pass remains necessary.
+7. Test mobile-width layout, keyboard navigation, IME entry, dark mode and a long streaming code block. Desktop and 150% browser-zoom checks of the deployed UI correction passed on 24 November; a real mobile keyboard and the remaining streaming scenarios still need a live pass.
 8. Inspect AWS charges and Activate application history after billing updates. Confirm the model provider's specific charges are eligible for your grant.
 
 ### Claude Code through Bedrock (optional developer track)
@@ -114,4 +114,35 @@ The model chooser is a labelled portal dialog with focus restoration, independen
 
 Validation: 48 frontend tests, including 19 new scroll, dialog, keyboard, composer and preference regression tests; TypeScript/production Vite build; lint with zero warnings. These DOM tests validate interactions, not rendered browser geometry.
 
-Deployment gate: the correction must still be deployed and checked in the live browser at desktop size, a narrow/zoomed viewport, and with a real mobile keyboard. Confirm scrolling both directions in saved history, reading older content while a long answer streams, Jump to latest, model search/selection, prompt starters, attachment previews and a follow-up message after reload. Verify the sidebar, footer/settings, dark theme, Escape/focus return and absence of horizontal page overflow. AWS Console returned Site Unavailable (403) in the assistant's browser, so the existing CloudShell deployment route is required. No claim of completed production visual verification is made for this correction before that gate passes.
+Deployment status (24 November 2026): the owner confirmed successful deployment of application commit `fdc9347fe9f0604d03084d0c88e266d2f8e8cc40`. An authenticated production browser check verified readable sidebar labels, the model dialog and Escape, scrolling both directions in saved history, Jump to latest, and no horizontal page overflow. At 150% browser zoom, responsive navigation opened and closed and the composer remained reachable; zoom was restored afterward. This is not a real mobile-device/keyboard test. Reading older content during a fresh long stream, real mobile keyboards, dark-theme checks and broader operational tests remain outstanding.
+
+## Stop generation and portable conversations — 24 November 2026
+
+During a streaming request the send control becomes **Stop generation**. Stopping before authentication or the upload handshake completes avoids invoking the model. Once a request reaches the backend, an authenticated control message marks that socket's existing, user-owned DynamoDB session as cancelled. The running handler polls the record about once per second and passes a thread-safe cancellation signal to the pinned Strands SDK; the legacy Converse path closes its event stream. Duplicate END frames cannot start a second generation.
+
+Stop is cooperative: model/network checkpoints and tools already executing can delay completion, and completed actions cannot be undone. Tokens/work processed before cancellation may still be billed; local usage estimates can be incomplete for interrupted streams. The UI shows Stopping until the backend confirms that the partial answer was persisted. A lost connection reports that cancellation could not be confirmed. New-chat navigation ignores late output from the previous view.
+
+Visible partial text is saved with a stopped flag, survives history reload, and can be used in a follow-up. Incomplete reasoning signatures and tool-use blocks are removed before replaying stopped content to a provider. Stopped first requests use a prompt-derived title rather than starting another title-model call. Stop during the initial handshake leaves the prompt/files available locally for another send.
+
+| Action | Content |
+|---|---|
+| Copy prompt | The user's message text |
+| Copy answer as Markdown | All visible answer text blocks, preserving code, Unicode and citation markers |
+| Copy request and response | The preceding user prompt and selected answer, with the same export options below |
+| Export conversation | All user/assistant messages on the selected conversation path; alternate branches are excluded |
+| Formats | Markdown, plain text or structured JSON, using Copy all or Download |
+| Optional context | Complete available extracted attachment text and cited source excerpts |
+
+The export preview is limited to 20,000 characters for responsiveness; Copy all and Download use the entire export without that preview cap. Attachment reads use the owner's authenticated endpoint, with at most three concurrent reads. The endpoint returns base64-encoded UTF-8 text to avoid JSON escaping inflation and disables caching. Exports whitelist the intended conversation fields and omit authentication state, raw S3 keys, temporary signed links, hidden instructions and internal reasoning. Explicitly pasted secrets in ordinary message/file text remain part of that text.
+
+Images and original binary documents are listed with a reattachment notice, rather than embedded. Failed/deleted attachment reads are identified. This is a portable record of visible conversation and available file context, not an exact provider request or an automatic reconstruction of private bot instructions, all tool results, or every retrieval step. The receiving LLM's file and context limits still apply.
+
+Validation: all 74 frontend tests pass; lint passes with zero warnings; TypeScript and the Vite production build pass. The existing large-bundle advisory remains. Forty-four targeted backend tests pass, including real pinned-SDK cancellation with a synthetic no-network model, persisted partial answers, authoritative completion events, cancellation ownership/duplicate protection, full-file export and attachment ownership. Existing Pydantic/legacy API deprecation warnings remain. No new AWS permissions or infrastructure resources are required for cancellation or export.
+
+Deploy backend and frontend together using the newly pinned helper. The Stop/export change has not yet been deployed or live-smoke-tested. After deployment:
+
+1. Start a long answer; stop while reasoning, during text and during a tool step. Wait for the confirmation, reload the conversation, verify partial text/stopped status, then send a follow-up. Stop cannot undo a tool action already completed.
+2. Stop immediately after Send and send again with the same files. Verify no duplicate response, missing prompt or stale busy state. Open New chat during an answer and verify old output does not enter the new chat.
+3. Copy a prompt, a code-containing answer, one request/response and the whole conversation. Export Markdown/text/JSON. Use an extracted file over 20,000 characters and verify its last line appears in Copy all and Download. Reattach binary originals in the destination LLM.
+4. Verify another user cannot read the attachment-text endpoint; check missing/deleted files and blocked clipboard permissions. Copy failure must offer Download without reporting success.
+5. Repeat scroll, model dialog and composer checks on desktop, narrow/zoomed layouts and a real mobile keyboard. Confirm all new actions remain reachable without horizontal overflow.

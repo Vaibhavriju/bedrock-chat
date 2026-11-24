@@ -199,6 +199,7 @@ class MessageInput(BaseSchema):
 
 
 class MessageOutput(BaseSchema):
+    stopped: bool = False
     role: str = Field(..., description="Role of the message. Either `user` or `bot`.")
     content: list[Content]
     model: type_model_name

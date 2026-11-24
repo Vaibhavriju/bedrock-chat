@@ -39,6 +39,8 @@ type Props = BaseProps & {
   canRegenerate: boolean;
   canContinue: boolean;
   isLoading: boolean;
+  onStop?: () => void;
+  stopping?: boolean;
   isNewChat?: boolean;
   onSend: (
     content: string,
@@ -370,8 +372,17 @@ const InputChatContent = forwardRef<HTMLElement, Props>(
               disabled={disabledSend || props.disabled}
               loading={props.isLoading}
               onClick={sendContent}
+              onStop={props.onStop}
+              stopping={props.stopping}
             />
           </div>
+          {props.stopping && (
+            <p
+              role="status"
+              className="px-4 text-xs text-dark-gray dark:text-light-gray">
+              Stopping generation and saving the partial answer…
+            </p>
+          )}
           {base64EncodedImages.length > 0 && (
             <div className="relative m-2 flex max-h-28 shrink-0 flex-wrap gap-3 overflow-y-auto p-2">
               {base64EncodedImages.map((imageFile, idx) => (

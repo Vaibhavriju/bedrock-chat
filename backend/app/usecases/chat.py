@@ -1,5 +1,6 @@
 import logging
 from typing import Callable
+from threading import Event
 
 from app.agents.tools.agent_tool import ToolRunResult
 from app.agents.utils import get_tools
@@ -70,7 +71,9 @@ def prepare_conversation(
 
     enabled_models = get_global_available_models()
     if enabled_models and chat_input.message.model not in enabled_models:
-        raise PermissionError("This model is not enabled in your workspace. Ask an administrator to review model access.")
+        raise PermissionError(
+            "This model is not enabled in your workspace. Ask an administrator to review model access."
+        )
     current_time = get_current_time()
     bot = None
 
@@ -299,6 +302,7 @@ def chat(
     on_thinking: Callable[[OnThinking], None] | None = None,
     on_tool_result: Callable[[ToolRunResult], None] | None = None,
     on_reasoning: Callable[[str], None] | None = None,
+    cancel_signal: Event | None = None,
 ) -> tuple[ConversationModel, MessageModel]:
     user_msg_id, conversation, bot = prepare_conversation(user, chat_input)
     display_citation = bot is not None and bot.display_retrieved_chunks
@@ -414,7 +418,28 @@ def chat(
 
     use_strands = os.environ.get("USE_STRANDS", "true").lower() == "true"
 
-    if use_strands:
+    if cancel_signal is not None and cancel_signal.is_set():
+        # Preserve the user's prompt without starting a model request.
+        result = OnStopInput(
+            message=MessageModel(
+                role="assistant",
+                content=[TextContentModel(content_type="text", body="")],
+                model=chat_input.message.model,
+                children=[],
+                parent=None,
+                create_time=get_current_time(),
+                feedback=None,
+                used_chunks=None,
+                thinking_log=None,
+            ),
+            stop_reason="cancelled",
+            input_token_count=0,
+            output_token_count=0,
+            cache_read_input_count=0,
+            cache_write_input_count=0,
+            price=0.0,
+        )
+    elif use_strands:
         from app.strands_integration.chat_strands import converse_with_strands
 
         result = converse_with_strands(
@@ -430,6 +455,7 @@ def chat(
             on_thinking=on_thinking,
             on_tool_result=on_tool_run_result,
             on_reasoning=on_reasoning,
+            cancel_signal=cancel_signal,
         )
 
     else:
@@ -446,6 +472,7 @@ def chat(
             on_thinking=on_thinking,
             on_tool_result=on_tool_run_result,
             on_reasoning=on_reasoning,
+            cancel_signal=cancel_signal,
         )
 
     # Post handling: process the result and update conversation
@@ -477,6 +504,7 @@ def converse_legacy(
     on_thinking: Callable[[OnThinking], None] | None = None,
     on_tool_result: Callable[[ToolRunResult], None] | None = None,
     on_reasoning: Callable[[str], None] | None = None,
+    cancel_signal: Event | None = None,
 ) -> OnStopInput:
     """
     Legacy converse implementation.
@@ -494,6 +522,7 @@ def converse_legacy(
         on_stream=on_stream,
         on_thinking=on_thinking,
         on_reasoning=on_reasoning,
+        cancel_signal=cancel_signal,
     )
 
     thinking_log: list[SimpleMessageModel] = []
@@ -566,6 +595,9 @@ def converse_legacy(
 
         run_results: list[ToolRunResult] = []
         for content in tool_use_contents:
+            if cancel_signal is not None and cancel_signal.is_set():
+                result["stop_reason"] = "cancelled"
+                return result
             tool = tools[content.body.name]
             run_result = tool.run(
                 tool_use_id=content.body.tool_use_id,
@@ -609,6 +641,24 @@ def post_process_result(
 
     message = result["message"]
     stop_reason = result["stop_reason"]
+
+    if stop_reason == "cancelled":
+        # Incomplete reasoning signatures or tool-use blocks cannot safely be
+        # replayed to a provider. Retain the visible partial answer as plain text.
+        message.content = [
+            c
+            for c in message.content
+            if isinstance(c, TextContentModel) and c.body.strip()
+        ]
+        if not message.content:
+            message.content = [
+                TextContentModel(
+                    content_type="text",
+                    body="Generation stopped before an answer was produced.",
+                )
+            ]
+        message.thinking_log = None
+        message.stopped = True
 
     conversation.total_price += result["price"]
     conversation.should_continue = stop_reason == "max_tokens" and is_prefill_supported(
@@ -688,6 +738,7 @@ def chat_output_from_message(
         conversation_id=conversation.id,
         create_time=conversation.create_time,
         message=MessageOutput(
+            stopped=message.stopped,
             role=message.role,
             content=[c.to_content() for c in message.content],
             model=message.model,
@@ -790,6 +841,7 @@ def fetch_conversation(user_id: str, conversation_id: str) -> Conversation:
 
     message_map = {
         message_id: MessageOutput(
+            stopped=message.stopped,
             role=message.role,
             content=[c.to_content() for c in message.content],
             model=message.model,
