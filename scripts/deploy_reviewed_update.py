@@ -17,7 +17,7 @@ REGION = "us-east-1"
 PROJECT = "Project-qxDibdGZgEGd"
 ACCOUNT = "940880953077"
 REPOSITORY = "https://github.com/Vaibhavriju/bedrock-chat.git"
-REVIEWED_COMMIT = "aa10fb33975c56023508a1d6482316fcaa32fd14"
+REVIEWED_COMMIT = "cb626c2d44fded122db4370190028783a69264c1"
 BRANCH = "improve-chat-experience"
 
 
