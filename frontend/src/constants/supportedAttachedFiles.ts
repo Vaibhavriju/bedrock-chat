@@ -52,6 +52,18 @@ export const TEXT_FILE_EXTENSIONS = [
   '.coffee',
   '.tex',
   '.latex',
+  '.mdx',
+  '.tsv',
+  '.jsonl',
+  '.xml',
+  '.scss',
+  '.vue',
+  '.svelte',
+  '.graphql',
+  '.gql',
+  '.tf',
+  '.tfvars',
+  '.properties',
 ];
 
 // Supported non-text file extensions which can be handled on Converse API.
@@ -62,6 +74,8 @@ export const NON_TEXT_FILE_EXTENSIONS = [
   '.docx',
   '.xls',
   '.xlsx',
+  '.pptx',
+  '.zip',
 ];
 
 export const SUPPORTED_FILE_EXTENSIONS = [
@@ -69,9 +83,8 @@ export const SUPPORTED_FILE_EXTENSIONS = [
   ...NON_TEXT_FILE_EXTENSIONS,
 ];
 
-// Converse API limitations:
-// You can include up to five documents. Each document’s size must be no more than 4.5 MB.
-// Ref: https://awscli.amazonaws.com/v2/documentation/api/latest/reference/bedrock-runtime/converse.html
-export const MAX_FILE_SIZE_MB = 4.5;
+// Upload transport limit. Native Bedrock documents remain limited to 4.5 MB / 5 documents.
+// Larger PDFs and Office/source archives are processed to bounded text on the server.
+export const MAX_FILE_SIZE_MB = 25;
 export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-export const MAX_ATTACHED_FILES = 5;
+export const MAX_ATTACHED_FILES = 10;

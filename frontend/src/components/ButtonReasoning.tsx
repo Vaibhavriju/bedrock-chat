@@ -33,6 +33,7 @@ const ButtonReasoning: React.FC<Props> = ({
         'transition-colors hover:brightness-90',
         disabled ? 'opacity-30 ' : 'cursor-pointer'
       )}
+      disabled={disabled}
       onClick={(e) => {
         e.stopPropagation();
         e.preventDefault();

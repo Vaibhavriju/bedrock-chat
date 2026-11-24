@@ -62,7 +62,7 @@ const usePreviousBotId = (botId: string | null | undefined) => {
 
 const useModel = (botId?: string | null, activeModels?: ActiveModels) => {
   const { getGlobalConfig } = useGlobalConfig();
-  const { data: globalConfig } = getGlobalConfig();
+  const { data: globalConfig, error: modelConfigError } = getGlobalConfig();
 
   const processedActiveModels = useMemo(() => {
     // Early return if activeModels is provided and not empty
@@ -83,6 +83,36 @@ const useModel = (botId?: string | null, activeModels?: ActiveModels) => {
 
   const availableModels = useMemo<ModelItem[]>(() => {
     return [
+      {
+        modelId: 'claude-v5.5-sonnet',
+        label: 'Claude Sonnet 5.5',
+        description:
+          'Coding, documents and everyday knowledge work. Reasoning off uses between-tool thinking.',
+        supportMediaType: CLAUDE_SUPPORTED_MEDIA_TYPES,
+        supportReasoning: true,
+      },
+      {
+        modelId: 'claude-v5.5-haiku',
+        label: 'Claude Haiku 5.5',
+        description:
+          'Fast drafting, summaries and high-volume tasks with optional reasoning.',
+        supportMediaType: CLAUDE_SUPPORTED_MEDIA_TYPES,
+        supportReasoning: true,
+      },
+      {
+        modelId: 'gpt-6.2-sol',
+        label: 'GPT-6.2 Sol',
+        description: 'Everyday coding, technical writing and business work.',
+        supportMediaType: OPENAI_GPT_6_SUPPORTED_MEDIA_TYPES,
+        supportReasoning: true,
+      },
+      {
+        modelId: 'gpt-6.2-astra',
+        label: 'GPT-6.2 Astra',
+        description: 'Complex coding, analysis and longer technical projects.',
+        supportMediaType: OPENAI_GPT_6_SUPPORTED_MEDIA_TYPES,
+        supportReasoning: true,
+      },
       {
         modelId: 'claude-v4-opus',
         label: t('model.claude-v4-opus.label'),
@@ -124,6 +154,7 @@ const useModel = (botId?: string | null, activeModels?: ActiveModels) => {
         description: t('model.claude-v5.5-opus.description'),
         supportMediaType: CLAUDE_SUPPORTED_MEDIA_TYPES,
         supportReasoning: true,
+        forceReasoningEnabled: true,
       },
       {
         modelId: 'claude-v4-sonnet',
@@ -200,6 +231,14 @@ const useModel = (botId?: string | null, activeModels?: ActiveModels) => {
         modelId: 'amazon-nova-pro',
         label: t('model.amazon-nova-pro.label'),
         description: t('model.amazon-nova-pro.description'),
+        supportMediaType: NOVA_SUPPORTED_MEDIA_TYPES,
+        supportReasoning: false,
+      },
+      {
+        modelId: 'amazon-nova-2-lite',
+        label: 'Amazon Nova 2 Lite',
+        description:
+          'Amazon model for fast text work, source files and extracted documents. Reasoning is off in this integration.',
         supportMediaType: NOVA_SUPPORTED_MEDIA_TYPES,
         supportReasoning: false,
       },
@@ -347,14 +386,20 @@ const useModel = (botId?: string | null, activeModels?: ActiveModels) => {
         supportReasoning: false,
       },
     ].filter((model) => {
+      if (!globalConfig) {
+        return false;
+      }
       // Filter based on global configuration if available
       if (
-        globalConfig?.globalAvailableModels &&
-        globalConfig.globalAvailableModels.length > 0
+        globalConfig?.modelAccessConfigured ||
+        (globalConfig?.globalAvailableModels &&
+          globalConfig.globalAvailableModels.length > 0)
       ) {
-        return globalConfig.globalAvailableModels.includes(model.modelId);
+        return (
+          globalConfig?.globalAvailableModels.includes(model.modelId) ?? false
+        );
       }
-      // If no global config, show all models
+      // Legacy configurations without an explicit allowlist permit integrated models.
       return true;
     }) as ModelItem[];
   }, [t, globalConfig]);
@@ -408,7 +453,11 @@ const useModel = (botId?: string | null, activeModels?: ActiveModels) => {
       const modelExists = filteredModels.some(
         (m: ModelItem) => toCamelCase(m.modelId) === toCamelCase(targetModelId)
       );
-      return modelExists ? targetModelId : (getDefaultModel() ?? filteredModels[0]?.modelId ?? 'amazon-nova-lite');
+      return modelExists
+        ? targetModelId
+        : (getDefaultModel() ??
+            filteredModels[0]?.modelId ??
+            'amazon-nova-lite');
     },
     [filteredModels, getDefaultModel]
   );
@@ -466,15 +515,22 @@ const useModel = (botId?: string | null, activeModels?: ActiveModels) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [botId]);
 
-  const model = useMemo(() => {
-    if (!modelId) { return undefined; }
-    return filteredModels.find(
-      (model: ModelItem) => toCamelCase(model.modelId) === toCamelCase(modelId)
-    );
-  }, [filteredModels, modelId]);
+  // A policy refresh can remove a remembered model. Derive a permitted
+  // selection immediately instead of leaving a stale ID in the composer.
+  const selectedModelId = filteredModels.some(
+    (item) => item.modelId === modelId
+  )
+    ? modelId!
+    : getDefaultModel();
+  const model = useMemo(
+    () => filteredModels.find((item) => item.modelId === selectedModelId),
+    [filteredModels, selectedModelId]
+  );
 
   return {
-    modelId: modelId ?? getDefaultModel(),
+    modelId: selectedModelId,
+    isLoadingModels: !globalConfig && !modelConfigError,
+    modelConfigError: Boolean(modelConfigError),
     setModelId: (model: Model) => {
       setRecentUseModelId(model);
       if (botId) {

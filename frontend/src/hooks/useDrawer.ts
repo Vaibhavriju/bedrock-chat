@@ -22,6 +22,7 @@ const useDrawerStore = create<{
   opened: boolean;
   drawerOptions: DrawerOptions;
   switchOpen: () => void;
+  close: () => void;
   setDrawerOptions: (options: DrawerOptions) => void;
 }>((set) => {
   // get drawer option from local storage
@@ -54,6 +55,7 @@ const useDrawerStore = create<{
         opened: !state.opened,
       }));
     },
+    close: () => set({ opened: false }),
     setDrawerOptions: (options: DrawerOptions) => {
       // save local storage
       localStorage.setItem('DrawerOptions', JSON.stringify(options));
@@ -64,12 +66,13 @@ const useDrawerStore = create<{
 });
 
 const useDrawer = () => {
-  const { opened, switchOpen, drawerOptions, setDrawerOptions } =
+  const { opened, switchOpen, close, drawerOptions, setDrawerOptions } =
     useDrawerStore();
 
   return {
     opened,
     switchOpen,
+    close,
     drawerOptions,
     setDrawerOptions,
   };

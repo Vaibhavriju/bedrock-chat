@@ -4,6 +4,7 @@ import { twMerge } from 'tailwind-merge';
 
 type Props = BaseProps & {
   disabled?: boolean;
+  label?: string;
   onClick: (e: React.MouseEvent) => void;
   children: React.ReactNode;
 };
@@ -11,6 +12,9 @@ type Props = BaseProps & {
 const ButtonIcon: React.FC<Props> = (props) => {
   return (
     <button
+      type="button"
+      aria-label={props.label}
+      title={props.label}
       className={twMerge(
         'flex items-center justify-center rounded-full p-2 text-xl hover:shadow-sm',
         'dark:text-aws-font-color-dark dark:hover:shadow-aws-font-color-dark',

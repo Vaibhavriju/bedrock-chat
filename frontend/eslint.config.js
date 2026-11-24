@@ -71,7 +71,7 @@ export default defineConfig([
       // Custom classes defined in index.css.
       'tailwindcss/no-custom-classname': [
         'warn',
-        { whitelist: ['code-block-wrap'] },
+        { whitelist: ['code-block-wrap', 'workspace', 'workspace-chat', 'workspace-chat-header', 'workspace-model-label', 'workspace-messages', 'workspace-message', 'workspace-welcome', 'workspace-welcome-container', 'workspace-starter', 'workspace-brand', 'workspace-sidebar', 'workspace-composer', 'workspace-composer-help', 'workspace-composer-area', 'workspace-assistant-turn'] },
       ],
       curly: ['error', 'all'],
     },

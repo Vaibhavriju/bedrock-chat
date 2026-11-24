@@ -1,6 +1,7 @@
 import json
 import logging
-from typing import Callable, NotRequired, TypedDict, TypeGuard
+from typing import Callable, NotRequired, TypedDict, TypeGuard, Literal
+from threading import Event
 
 from app.agents.tools.agent_tool import AgentTool
 from app.bedrock import (
@@ -35,7 +36,7 @@ logger.setLevel(logging.INFO)
 
 class OnStopInput(TypedDict):
     message: MessageModel
-    stop_reason: StopReasonType
+    stop_reason: StopReasonType | Literal["cancelled"]
     input_token_count: int
     output_token_count: int
     cache_read_input_count: int
@@ -149,6 +150,7 @@ class ConverseApiStreamHandler:
         on_stream: Callable[[str], None] | None = None,
         on_thinking: Callable[[OnThinking], None] | None = None,
         on_reasoning: Callable[[str], None] | None = None,
+        cancel_signal: Event | None = None,
     ):
         """Base class for stream handlers.
         :param model: Model name.
@@ -163,6 +165,7 @@ class ConverseApiStreamHandler:
         self.on_stream = on_stream
         self.on_thinking = on_thinking
         self.on_reasoning = on_reasoning
+        self.cancel_signal = cancel_signal
 
     @retry(
         exceptions=(BedrockThrottlingException,),
@@ -179,6 +182,7 @@ class ConverseApiStreamHandler:
         enable_reasoning: bool = False,
         prompt_caching_enabled: bool = False,
     ) -> OnStopInput:
+        response_stream = None
         try:
             # Create payload to invoke Bedrock
             args = compose_args_for_converse_api(
@@ -192,7 +196,11 @@ class ConverseApiStreamHandler:
                 enable_reasoning=enable_reasoning,
                 prompt_caching_enabled=prompt_caching_enabled,
             )
-            logger.info(f"args for converse_stream: {args}")
+            logger.info(
+                "Starting streamed response: model=%s, messages=%d",
+                self.model,
+                len(messages),
+            )
 
             client = get_bedrock_runtime_client()
             try:
@@ -214,7 +222,11 @@ class ConverseApiStreamHandler:
             output_token_count = 0
             cache_read_input_count = 0
             cache_write_input_count = 0
-            for event in response["stream"]:
+            response_stream = response["stream"]
+            for event in response_stream:
+                if self.cancel_signal is not None and self.cancel_signal.is_set():
+                    stop_reason = "cancelled"
+                    break
                 logger.debug(f"event: {event}")
                 if "messageStart" in event:
                     message_start = event["messageStart"]
@@ -433,6 +445,7 @@ class ConverseApiStreamHandler:
                 content=[
                     _content_model_from_partial_content(content=content)
                     for _, content in sorted(current_message["contents"].items())
+                    if stop_reason != "cancelled" or _is_text_content(content)
                 ],
                 model=self.model,
                 children=[],
@@ -472,3 +485,6 @@ class ConverseApiStreamHandler:
         except Exception as e:
             logger.error(f"Error: {e}")
             raise e
+        finally:
+            if response_stream is not None:
+                response_stream.close()

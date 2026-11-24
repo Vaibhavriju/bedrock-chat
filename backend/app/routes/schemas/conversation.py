@@ -12,6 +12,8 @@ type_model_name = Literal[
     "claude-v4.6-opus",
     "claude-v4.7-opus",
     "claude-v5.5-opus",
+    "claude-v5.5-sonnet",
+    "claude-v5.5-haiku",
     "claude-v4-sonnet",
     "claude-v4.5-sonnet",
     "claude-v4.6-sonnet",
@@ -30,6 +32,7 @@ type_model_name = Literal[
     # New Amazon Nova models
     "amazon-nova-pro",
     "amazon-nova-lite",
+    "amazon-nova-2-lite",
     "amazon-nova-micro",
     # DeepSeek models
     "deepseek-r1",
@@ -41,6 +44,8 @@ type_model_name = Literal[
     "llama3-2-90b-instruct",
     "gpt-oss-20b",
     "gpt-oss-120b",
+    "gpt-6.2-sol",
+    "gpt-6.2-astra",
     "gpt-6-sol",
     "gpt-6-luna",
     "gpt-6-astra",
@@ -75,7 +80,10 @@ class AttachmentContent(BaseSchema):
         ...,
         description="File name of the attachment. Must be specified if `content_type` is `attachment`.",
     )
-    body: Base64EncodedBytes = Field(..., description="Content body.")
+    body: Base64EncodedBytes = Field(
+        default=b"", description="Legacy inline file bytes."
+    )
+    object_key: str | None = None
 
 
 class FeedbackInput(BaseSchema):
@@ -195,6 +203,7 @@ class MessageInput(BaseSchema):
 
 
 class MessageOutput(BaseSchema):
+    stopped: bool = False
     role: str = Field(..., description="Role of the message. Either `user` or `bot`.")
     content: list[Content]
     model: type_model_name

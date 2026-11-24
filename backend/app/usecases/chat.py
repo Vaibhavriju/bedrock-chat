@@ -1,5 +1,7 @@
+from app.usage_control import reserve_generation
 import logging
 from typing import Callable
+from threading import Event
 
 from app.agents.tools.agent_tool import ToolRunResult
 from app.agents.utils import get_tools
@@ -66,13 +68,20 @@ def prepare_conversation(
     user: User,
     chat_input: ChatInput,
 ) -> tuple[str, ConversationModel, BotModel | None]:
+    from app.usecases.global_config import get_global_available_models
+
+    enabled_models = get_global_available_models()
+    if enabled_models and chat_input.message.model not in enabled_models:
+        raise PermissionError(
+            "This model is not enabled in your workspace. Ask an administrator to review model access."
+        )
     current_time = get_current_time()
     bot = None
 
     try:
         # Fetch existing conversation
         conversation = find_conversation_by_id(user.id, chat_input.conversation_id)
-        logger.info(f"Found conversation: {conversation}")
+        logger.info("Found conversation id=%s", conversation.id)
         parent_id = chat_input.message.parent_message_id
         if chat_input.message.parent_message_id == "system" and chat_input.bot_id:
             # The case editing first user message and use bot
@@ -154,6 +163,37 @@ def prepare_conversation(
             should_continue=False,
         )
 
+    # Validate ownership on every incoming reference; never trust browser-supplied keys.
+    from app.attachments import read_manifest, MAX_TEXT_CHARACTERS
+    from app.repositories.models.conversation import AttachmentContentModel
+
+    incoming_attachments = [
+        c for c in chat_input.message.content if c.content_type == "attachment"
+    ]
+    if len(incoming_attachments) > 10:
+        raise ValueError("Attach up to 10 files per message.")
+    manifest_cache = {}
+    total_upload_bytes = 0
+    for attachment in incoming_attachments:
+        if attachment.object_key:
+            if attachment.body:
+                raise ValueError(
+                    "Use either an attachment reference or inline bytes, not both."
+                )
+            manifest = read_manifest(attachment.object_key, user.id)
+            if manifest.get("conversation_id") not in (
+                None,
+                chat_input.conversation_id,
+            ):
+                raise ValueError(
+                    "Upload this file again to use it in a different conversation."
+                )
+            manifest_cache[attachment.object_key] = manifest
+            total_upload_bytes += manifest["size"]
+            attachment.file_name = manifest["filename"]
+    if total_upload_bytes > 100 * 1024 * 1024:
+        raise ValueError("Attachments can total up to 100 MB per message.")
+
     # Append user chat input to the conversation
     if not chat_input.continue_generate:
         new_message = MessageModel.from_message_input(chat_input.message)
@@ -172,7 +212,9 @@ def prepare_conversation(
             fallback_id = conversation.last_message_id
             if not fallback_id or fallback_id not in conversation.message_map:
                 fallback_id = (
-                    "instruction" if "instruction" in conversation.message_map else "system"
+                    "instruction"
+                    if "instruction" in conversation.message_map
+                    else "system"
                 )
             logger.warning(
                 f"Unknown parent message id '{parent_id}'; using '{fallback_id}' instead."
@@ -186,6 +228,38 @@ def prepare_conversation(
         message_id = (
             conversation.message_map[conversation.last_message_id].parent
             or "instruction"
+        )
+
+    # Check the selected conversation path, including earlier attachments, before inference.
+    text_characters = 0
+    document_count = 0
+    for message in trace_to_root(message_id, conversation.message_map):
+        for attachment in message.content:
+            if not isinstance(attachment, AttachmentContentModel):
+                continue
+            if attachment.object_key:
+                manifest = manifest_cache.get(attachment.object_key)
+                if manifest is None:
+                    manifest = read_manifest(attachment.object_key, user.id)
+                    manifest_cache[attachment.object_key] = manifest
+                text_characters += manifest["characters"]
+                document_count += int(manifest["kind"] == "document")
+            else:
+                native = attachment.format_and_name[0] is not None
+                document_count += int(native)
+                if not native:
+                    text_characters += len(attachment.body.decode("utf-8"))
+    if text_characters > MAX_TEXT_CHARACTERS:
+        raise ValueError(
+            "Attachments in this conversation exceed 600,000 extracted characters. Start a new chat or use a knowledge-base bot. Nothing was truncated."
+        )
+    if document_count > 5:
+        raise ValueError(
+            "This conversation contains more than 5 original documents. Start a new chat with the relevant files."
+        )
+    if document_count and not chat_input.message.model.startswith("claude-"):
+        raise ValueError(
+            "Choose a Claude model for original PDF, DOC and XLS attachments, or upload extracted text instead."
         )
 
     return (message_id, conversation, bot)
@@ -229,7 +303,17 @@ def chat(
     on_thinking: Callable[[OnThinking], None] | None = None,
     on_tool_result: Callable[[ToolRunResult], None] | None = None,
     on_reasoning: Callable[[str], None] | None = None,
+    cancel_signal: Event | None = None,
 ) -> tuple[ConversationModel, MessageModel]:
+    # Authenticate/model-allowlist validation happens before any usage reservation.
+    from app.usecases.global_config import get_global_available_models
+
+    enabled_models = get_global_available_models()
+    if enabled_models and chat_input.message.model not in enabled_models:
+        raise PermissionError("This model is not enabled in the workspace.")
+    output_cap = None
+    if cancel_signal is None or not cancel_signal.is_set():
+        output_cap = reserve_generation(user, chat_input.message.model)
     user_msg_id, conversation, bot = prepare_conversation(user, chat_input)
     display_citation = bot is not None and bot.display_retrieved_chunks
 
@@ -326,6 +410,18 @@ def chat(
         message_for_continue_generate = None
 
     generation_params = bot.generation_params if bot else None
+    if output_cap is not None:
+        generation_params = (
+            generation_params.model_copy(deep=True)
+            if generation_params
+            else GenerationParamsModel()
+        )
+        generation_params.max_tokens = min(generation_params.max_tokens, output_cap)
+        # Older Claude's budget adjustment must not grow past the output ceiling.
+        generation_params.reasoning_params.budget_tokens = min(
+            generation_params.reasoning_params.budget_tokens,
+            max(1024, output_cap - 1024),
+        )
 
     # Guardrails
     guardrail = bot.bedrock_guardrails if bot else None
@@ -344,7 +440,28 @@ def chat(
 
     use_strands = os.environ.get("USE_STRANDS", "true").lower() == "true"
 
-    if use_strands:
+    if cancel_signal is not None and cancel_signal.is_set():
+        # Preserve the user's prompt without starting a model request.
+        result = OnStopInput(
+            message=MessageModel(
+                role="assistant",
+                content=[TextContentModel(content_type="text", body="")],
+                model=chat_input.message.model,
+                children=[],
+                parent=None,
+                create_time=get_current_time(),
+                feedback=None,
+                used_chunks=None,
+                thinking_log=None,
+            ),
+            stop_reason="cancelled",
+            input_token_count=0,
+            output_token_count=0,
+            cache_read_input_count=0,
+            cache_write_input_count=0,
+            price=0.0,
+        )
+    elif use_strands:
         from app.strands_integration.chat_strands import converse_with_strands
 
         result = converse_with_strands(
@@ -360,6 +477,7 @@ def chat(
             on_thinking=on_thinking,
             on_tool_result=on_tool_run_result,
             on_reasoning=on_reasoning,
+            cancel_signal=cancel_signal,
         )
 
     else:
@@ -376,6 +494,7 @@ def chat(
             on_thinking=on_thinking,
             on_tool_result=on_tool_run_result,
             on_reasoning=on_reasoning,
+            cancel_signal=cancel_signal,
         )
 
     # Post handling: process the result and update conversation
@@ -407,6 +526,7 @@ def converse_legacy(
     on_thinking: Callable[[OnThinking], None] | None = None,
     on_tool_result: Callable[[ToolRunResult], None] | None = None,
     on_reasoning: Callable[[str], None] | None = None,
+    cancel_signal: Event | None = None,
 ) -> OnStopInput:
     """
     Legacy converse implementation.
@@ -424,6 +544,7 @@ def converse_legacy(
         on_stream=on_stream,
         on_thinking=on_thinking,
         on_reasoning=on_reasoning,
+        cancel_signal=cancel_signal,
     )
 
     thinking_log: list[SimpleMessageModel] = []
@@ -496,6 +617,9 @@ def converse_legacy(
 
         run_results: list[ToolRunResult] = []
         for content in tool_use_contents:
+            if cancel_signal is not None and cancel_signal.is_set():
+                result["stop_reason"] = "cancelled"
+                return result
             tool = tools[content.body.name]
             run_result = tool.run(
                 tool_use_id=content.body.tool_use_id,
@@ -539,6 +663,24 @@ def post_process_result(
 
     message = result["message"]
     stop_reason = result["stop_reason"]
+
+    if stop_reason == "cancelled":
+        # Incomplete reasoning signatures or tool-use blocks cannot safely be
+        # replayed to a provider. Retain the visible partial answer as plain text.
+        message.content = [
+            c
+            for c in message.content
+            if isinstance(c, TextContentModel) and c.body.strip()
+        ]
+        if not message.content:
+            message.content = [
+                TextContentModel(
+                    content_type="text",
+                    body="Generation stopped before an answer was produced.",
+                )
+            ]
+        message.thinking_log = None
+        message.stopped = True
 
     conversation.total_price += result["price"]
     conversation.should_continue = stop_reason == "max_tokens" and is_prefill_supported(
@@ -618,6 +760,7 @@ def chat_output_from_message(
         conversation_id=conversation.id,
         create_time=conversation.create_time,
         message=MessageOutput(
+            stopped=message.stopped,
             role=message.role,
             content=[c.to_content() for c in message.content],
             model=message.model,
@@ -651,68 +794,18 @@ def propose_conversation_title(
     user_id: str,
     conversation_id: str,
 ) -> str:
-    # Use the configured title model for generating conversation titles
-    model = get_title_model()
-
-    PROMPT = """Reading the conversation above, what is the appropriate title for the conversation? When answering the title, please follow the rules below:
-<rules>
-- Title length must be from 15 to 20 characters.
-- Prefer more specific title than general. Your title should always be distinct from others.
-- Return the conversation title only. DO NOT include any strings other than the title.
-- Title must be in the same language as the conversation.
-</rules>
-"""
-    # Fetch existing conversation
+    """Derive a short local title without hidden or unbounded model calls."""
     conversation = find_conversation_by_id(user_id, conversation_id)
-
     messages = trace_to_root(
-        node_id=conversation.last_message_id,
-        message_map=conversation.message_map,
+        node_id=conversation.last_message_id, message_map=conversation.message_map
     )
-
-    # Append message to generate title
-    new_message = SimpleMessageModel(
-        role="user",
-        content=[
-            TextContentModel(
-                content_type="text",
-                body=PROMPT,
-            )
-        ],
-    )
-    messages.append(new_message)
-
-    # Invoke Bedrock
-    args = compose_args_for_converse_api(
-        messages=[
-            message
-            for message in messages
-            if not any(
-                isinstance(content, ToolUseContentModel)
-                or isinstance(content, ToolResultContentModel)
-                or isinstance(content, ReasoningContentModel)
-                for content in message.content
-            )
-        ],
-        model=model,
-        stream=False,
-    )
-    response = call_converse_api(args)
-    # Reasoning models (e.g. GPT-OSS) put a reasoningContent block before the text
-    reply_txt = (
-        next(
-            (
-                c["text"]
-                for c in response["output"]["message"]["content"]
-                if "text" in c
-            ),
-            "",
-        )
-        if "message" in response["output"]
-        else ""
-    )
-
-    return reply_txt
+    for message in messages:
+        if message.role != "user":
+            continue
+        for content in message.content:
+            if isinstance(content, TextContentModel) and content.body.strip():
+                return " ".join(content.body.split())[:80]
+    return "New conversation"
 
 
 def fetch_conversation(user_id: str, conversation_id: str) -> Conversation:
@@ -720,6 +813,7 @@ def fetch_conversation(user_id: str, conversation_id: str) -> Conversation:
 
     message_map = {
         message_id: MessageOutput(
+            stopped=message.stopped,
             role=message.role,
             content=[c.to_content() for c in message.content],
             model=message.model,

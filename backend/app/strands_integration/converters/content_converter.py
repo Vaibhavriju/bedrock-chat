@@ -58,27 +58,7 @@ def _attachment_content_model_to_strands_content_blocks(
 ) -> list[ContentBlock]:
     """Convert AttachmentContentModel to Strands ContentBlock format."""
 
-    format, name = content.format_and_name
-    return [
-        {
-            "document": (
-                {
-                    "format": format,
-                    "name": name,
-                    "source": {
-                        "bytes": content.body,
-                    },  # Use body directly (already base64)
-                }
-                if format is not None
-                else {
-                    "name": name,
-                    "source": {
-                        "bytes": content.body,
-                    },
-                }
-            ),
-        },
-    ]
+    return content.to_contents_for_converse()  # type: ignore[return-value]
 
 
 def _tool_use_content_model_to_strands_content_blocks(

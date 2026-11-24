@@ -262,6 +262,7 @@ export class Api extends Construct {
     props.usageAnalysis?.resultOutputBucket.grantReadWrite(handlerRole);
     props.usageAnalysis?.ddbBucket.grantRead(handlerRole);
     props.largeMessageBucket.grantReadWrite(handlerRole);
+    database.usageControlTable.grantReadWriteData(handlerRole);
 
     const handler = new PythonFunction(this, "HandlerV2", {
       entry: path.join(__dirname, "../../../backend"),
@@ -277,6 +278,7 @@ export class Api extends Construct {
       timeout: Duration.minutes(15),
       environment: {
         CONVERSATION_TABLE_NAME: database.conversationTable.tableName,
+        USAGE_CONTROL_TABLE_NAME: database.usageControlTable.tableName,
         BOT_TABLE_NAME: database.botTable.tableName,
         ENV_NAME: props.envName,
         ENV_PREFIX: props.envPrefix,

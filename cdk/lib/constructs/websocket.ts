@@ -17,6 +17,7 @@ import { Database } from "./database";
 
 export interface WebSocketProps {
   readonly database: Database;
+  readonly globalAvailableModels?: string[];
   readonly auth: Auth;
   readonly bedrockRegion: string;
   readonly documentBucket: s3.IBucket;
@@ -103,6 +104,7 @@ export class WebSocket extends Construct {
     database.websocketSessionTable.grantReadWriteData(handlerRole);
     props.largeMessageBucket.grantReadWrite(handlerRole);
     props.documentBucket.grantRead(handlerRole);
+    database.usageControlTable.grantReadWriteData(handlerRole);
 
     const handler = new PythonFunction(this, "HandlerV2", {
       entry: path.join(__dirname, "../../../backend"),
@@ -121,6 +123,8 @@ export class WebSocket extends Construct {
         CLIENT_ID: props.auth.client.userPoolClientId,
         BEDROCK_REGION: props.bedrockRegion,
         CONVERSATION_TABLE_NAME: database.conversationTable.tableName,
+        USAGE_CONTROL_TABLE_NAME: database.usageControlTable.tableName,
+        GLOBAL_AVAILABLE_MODELS: props.globalAvailableModels ? JSON.stringify(props.globalAvailableModels) : "[]",
         BOT_TABLE_NAME: database.botTable.tableName,
         TABLE_ACCESS_ROLE_ARN: tableAccessRole.roleArn,
         LARGE_MESSAGE_BUCKET: props.largeMessageBucket.bucketName,
@@ -138,6 +142,28 @@ export class WebSocket extends Construct {
         : undefined,
       logRetention: logs.RetentionDays.THREE_MONTHS,
     });
+
+    // IAM-only diagnostic: uses the exact chat execution role, with no public URL.
+    const frontierProbe = new PythonFunction(this, "FrontierModelProbe", {
+      entry: path.join(__dirname, "../../../backend"),
+      index: "app/model_probe.py",
+      handler: "handler",
+      bundling: { assetExcludes: [...excludeDockerImage], buildArgs: { POETRY_VERSION: "1.8.5" } },
+      runtime: Runtime.PYTHON_3_13,
+      memorySize: 512,
+      timeout: Duration.minutes(10),
+      role: handlerRole,
+      logRetention: logs.RetentionDays.THREE_MONTHS,
+      environment: {
+        REGION: Stack.of(this).region,
+        BEDROCK_REGION: props.bedrockRegion,
+        USAGE_CONTROL_TABLE_NAME: database.usageControlTable.tableName,
+        APPLICATION_ROLE_ARN: handlerRole.roleArn,
+        ENABLE_BEDROCK_GLOBAL_INFERENCE: props.enableBedrockGlobalInference.toString(),
+        ENABLE_BEDROCK_CROSS_REGION_INFERENCE: props.enableBedrockCrossRegionInference.toString(),
+      },
+    });
+    new CfnOutput(Stack.of(this), "FrontierModelProbeFunctionName", { value: frontierProbe.functionName });
 
     const webSocketApi = new apigwv2.WebSocketApi(this, "WebSocketApi", {
       connectRouteOptions: {

@@ -5,10 +5,12 @@ Main chat function for Strands integration.
 import json
 import logging
 from typing import Callable
+from threading import Event
+from botocore.config import Config
 
 from app.agents.tools.agent_tool import ToolRunResult
 from app.bedrock import calculate_price, BedrockGuardrailsModel
-from app.repositories.models.conversation import SimpleMessageModel
+from app.repositories.models.conversation import SimpleMessageModel, TextContentModel
 from app.repositories.models.custom_bot import (
     BotModel,
     GenerationParamsModel,
@@ -49,6 +51,9 @@ def converse_with_strands(
     on_thinking: Callable[[OnThinking], None] | None = None,
     on_tool_result: Callable[[ToolRunResult], None] | None = None,
     on_reasoning: Callable[[str], None] | None = None,
+    cancel_signal: Event | None = None,
+    runtime_model_id: str | None = None,
+    model_client_config: Config | None = None,
 ) -> OnStopInput:
     """
     Chat with Strands agents.
@@ -95,6 +100,8 @@ def converse_with_strands(
         prompt_caching_enabled=prompt_caching_enabled,
         has_tools=has_tools,
         hooks=[tool_capture],
+        runtime_model_id=runtime_model_id,
+        model_client_config=model_client_config,
     )
 
     thinking_log: list[SimpleMessageModel] = []
@@ -106,8 +113,15 @@ def converse_with_strands(
         ):
             thinking_log.append(strands_message_to_simple_message_model(message))
 
+    visible_parts: list[str] = []
+
+    def capture_text(text: str):
+        visible_parts.append(text)
+        if on_stream:
+            on_stream(text)
+
     agent.callback_handler = create_callback_handler(
-        on_stream=on_stream,
+        on_stream=capture_text,
         on_reasoning=on_reasoning,
         on_message=on_message,
     )
@@ -123,7 +137,7 @@ def converse_with_strands(
 
     def run_agent(agent: Agent) -> tuple[StopReason, Message, EventLoopMetrics]:
         try:
-            result = agent(strands_messages)
+            result = agent(strands_messages, cancel_signal=cancel_signal)
             return (
                 result.stop_reason,
                 result.message,
@@ -146,6 +160,13 @@ def converse_with_strands(
         create_time=get_current_time(),
         thinking_log=thinking_log,
     )
+    if stop_reason == "cancelled":
+        # The SDK intentionally discards an incomplete provider message and
+        # returns a cancellation placeholder. Preserve the text the user saw.
+        message.content = [
+            TextContentModel(content_type="text", body="".join(visible_parts))
+        ]
+        message.thinking_log = None
 
     # Extract token usage from metrics
     input_tokens = metrics.accumulated_usage.get("inputTokens", 0)
@@ -172,8 +193,7 @@ def converse_with_strands(
 
     return OnStopInput(
         message=message,
-        # Strands also has cancel/interrupt/checkpoint/limit_* stop reasons, which
-        # only come from agent features this app does not use.
+        # A caller-owned signal also allows the user to stop a running response.
         stop_reason=stop_reason,  # type: ignore[typeddict-item]
         input_token_count=input_tokens,
         output_token_count=output_tokens,

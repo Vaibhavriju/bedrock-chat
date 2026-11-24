@@ -18,6 +18,7 @@ export class Database extends Construct {
   readonly botTable: Table;
   readonly tableAccessRole: Role;
   readonly websocketSessionTable: Table;
+  readonly usageControlTable: Table;
 
   constructor(scope: Construct, id: string, props?: DatabaseProps) {
     super(scope, id);
@@ -104,6 +105,16 @@ export class Database extends Construct {
       timeToLiveAttribute: "expire",
     });
 
+    // Keep policies and atomic quota counters separate from conversation data.
+    this.usageControlTable = new Table(this, "UsageControlTable", {
+      partitionKey: { name: "PK", type: AttributeType.STRING },
+      sortKey: { name: "SK", type: AttributeType.STRING },
+      billingMode: BillingMode.PAY_PER_REQUEST,
+      encryption: TableEncryption.AWS_MANAGED,
+      pointInTimeRecovery: true,
+      removalPolicy: RemovalPolicy.RETAIN,
+      timeToLiveAttribute: "ExpiresAt",
+    });
     this.conversationTable = conversationTable;
     this.botTable = botTable;
     this.tableAccessRole = tableAccessRole;
@@ -112,6 +123,7 @@ export class Database extends Construct {
     new CfnOutput(this, "ConversationTableName", {
       value: conversationTable.tableName,
     });
+    new CfnOutput(Stack.of(this), "UsageControlTableName", { value: this.usageControlTable.tableName });
     new CfnOutput(this, "BotTableName", {
       value: botTable.tableName,
     });

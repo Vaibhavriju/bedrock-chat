@@ -5,11 +5,15 @@ import traceback
 from datetime import datetime
 from decimal import Decimal as decimal
 from queue import SimpleQueue
-from threading import Thread
+from threading import Thread, Event
 from typing import BinaryIO, Literal, TypedDict
 
 import boto3
 from app.agents.tools.agent_tool import ToolRunResult
+from app.usage_control import UsageLimitExceeded, UsageControlUnavailable
+from app.generation_control import begin_generation, request_stop, GenerationMonitor
+from botocore.config import Config
+from botocore.exceptions import ClientError
 from app.auth import verify_token
 from app.repositories.conversation import RecordNotFoundError
 from app.routes.schemas.conversation import ChatInput
@@ -20,7 +24,10 @@ from boto3.dynamodb.conditions import Attr, Key
 
 WEBSOCKET_SESSION_TABLE_NAME = os.environ["WEBSOCKET_SESSION_TABLE_NAME"]
 
-dynamodb_client = boto3.resource("dynamodb")
+dynamodb_client = boto3.resource(
+    "dynamodb",
+    config=Config(connect_timeout=2, read_timeout=2, retries={"max_attempts": 1}),
+)
 table = dynamodb_client.Table(WEBSOCKET_SESSION_TABLE_NAME)
 
 logger = logging.getLogger(__name__)
@@ -44,6 +51,7 @@ class NotificationSender:
         self.commands = SimpleQueue[_Command]()
         self.endpoint_url = endpoint_url
         self.connection_id = connection_id
+        self.cancel_signal = Event()
 
     def run(self):
         import boto3
@@ -57,9 +65,7 @@ class NotificationSender:
             command = self.commands.get()
             if command["type"] == "notify":
                 try:
-                    logger.debug(
-                        f"[WEBSOCKET_SEND] Sending to connection {self.connection_id}: {command['payload'][:200]}..."
-                    )
+                    logger.debug("[WEBSOCKET_SEND] Sending response frame")
                     gatewayapi.post_to_connection(
                         ConnectionId=self.connection_id,
                         Data=command["payload"],
@@ -72,9 +78,8 @@ class NotificationSender:
                     gatewayapi.exceptions.GoneException,
                     gatewayapi.exceptions.ForbiddenException,
                 ) as e:
-                    logger.exception(
-                        f"Shutdown the notification sender due to an exception: {e}"
-                    )
+                    logger.info("Response connection closed; requesting cancellation.")
+                    self.cancel_signal.set()
                     break
 
                 except Exception as e:
@@ -114,7 +119,7 @@ class NotificationSender:
         self.notify(payload=payload)
 
     def on_stop(self, arg: OnStopInput):
-        logger.debug(f"[WEBSOCKET_ON_STOP] WebSocket on_stop called with: {arg}")
+        logger.debug("[WEBSOCKET_ON_STOP] stop_reason=%s", arg["stop_reason"])
         payload = json.dumps(
             dict(
                 status="STREAMING_END",
@@ -193,14 +198,16 @@ def process_chat_input(
     user: User,
     chat_input: ChatInput,
     notificator: NotificationSender,
+    cancel_signal: Event | None = None,
 ) -> dict:
     """Process chat input and send the message to the client."""
-    logger.info(f"Received chat input: {chat_input}")
+    logger.info("Received chat request for model=%s", chat_input.message.model)
 
     try:
         chat(
             user=user,
             chat_input=chat_input,
+            cancel_signal=cancel_signal,
             on_stream=lambda token: notificator.on_stream(
                 token=token,
             ),
@@ -218,6 +225,21 @@ def process_chat_input(
 
         return {"statusCode": 200, "body": "Message sent."}
 
+    except UsageLimitExceeded as error:
+        return {
+            "statusCode": 429,
+            "body": json.dumps({"status": "ERROR", "reason": str(error)}),
+        }
+    except UsageControlUnavailable:
+        return {
+            "statusCode": 503,
+            "body": json.dumps(
+                {
+                    "status": "ERROR",
+                    "reason": "Usage limits could not be verified. Please retry shortly.",
+                }
+            ),
+        }
     except RecordNotFoundError:
         if chat_input.bot_id:
             return {
@@ -254,7 +276,7 @@ def process_chat_input(
 
 
 def handler(event, context):
-    logger.info(f"Received event: {event}")
+    logger.info("WebSocket route=%s", event.get("requestContext", {}).get("routeKey"))
     route_key = event["requestContext"]["routeKey"]
 
     if route_key == "$connect":
@@ -272,7 +294,7 @@ def handler(event, context):
     )
 
     now = datetime.now()
-    expire = int(now.timestamp()) + 60 * 2  # 2 minute from now
+    expire = int(now.timestamp()) + 60 * 20  # Cover the maximum generation duration.
     body = json.loads(event["body"])
     step = body.get("step")
     token = body.get("token")
@@ -319,9 +341,30 @@ def handler(event, context):
                     "MessagePartId": decimal(0),
                     "UserId": user_id,
                     "expire": expire,
-                }
+                },
+                ConditionExpression="attribute_not_exists(ConnectionId)",
             )
             return {"statusCode": 200, "body": "Session started."}
+        elif step == "CANCEL":
+            decoded = verify_token(token)
+            try:
+                request_stop(table, connection_id, decoded["sub"])
+            except ClientError as error:
+                if (
+                    error.response.get("Error", {}).get("Code")
+                    == "ConditionalCheckFailedException"
+                ):
+                    return {
+                        "statusCode": 409,
+                        "body": json.dumps(
+                            {
+                                "status": "STOP_REJECTED",
+                                "reason": "This response has already finished or cannot be stopped.",
+                            }
+                        ),
+                    }
+                raise
+            return {"statusCode": 200, "body": json.dumps({"status": "STOP_REQUESTED"})}
         elif step == "END":
             decoded = verify_token(token)
             user = User.from_decoded_token(decoded)
@@ -330,8 +373,15 @@ def handler(event, context):
             response = table.query(
                 KeyConditionExpression=Key("ConnectionId").eq(connection_id),
                 FilterExpression=Attr("UserId").exists(),
+                ConsistentRead=True,
             )
-            user_id = response["Items"][0]["UserId"]
+            records = response.get("Items", [])
+            if not records or records[0].get("UserId") != user.id:
+                raise PermissionError(
+                    "The response session does not belong to this user."
+                )
+            user_id = user.id
+            begin_generation(table, connection_id, user_id)
 
             # Concatenate the message parts
             message_parts = []
@@ -364,11 +414,19 @@ def handler(event, context):
 
             # Process the concatenated full message
             chat_input = ChatInput(**json.loads(full_message))
-            return process_chat_input(
-                user=user,
-                chat_input=chat_input,
-                notificator=notificator,
-            )
+            with GenerationMonitor(
+                table,
+                connection_id,
+                user_id,
+                cancel_signal=notificator.cancel_signal,
+                on_heartbeat=lambda: notificator.notify(b'{"status":"HEARTBEAT"}'),
+            ) as cancel_signal:
+                return process_chat_input(
+                    user=user,
+                    chat_input=chat_input,
+                    notificator=notificator,
+                    cancel_signal=cancel_signal,
+                )
 
         else:
             # Store the message part of full message

@@ -19,8 +19,12 @@ import BotDiscoverPage from './features/discover/pages/BotDiscoverPage.tsx';
 import BotRecentlyUsedPage from './pages/BotRecentlyUsedPage.tsx';
 import BotStarredPage from './pages/BotStarredPage.tsx';
 import ConversationHistoryPage from './pages/ConversationHistoryPage.tsx';
+import AdminModelsPage from './pages/AdminModelsPage';
+import AdminLimitsPage from './pages/AdminLimitsPage';
 
 const rootChildren = [
+  { path: '/admin/models', element: <AdminModelsPage /> },
+  { path: '/admin/limits', element: <AdminLimitsPage /> },
   {
     path: '/',
     element: <ChatPage />,
@@ -101,6 +105,8 @@ export const allPaths = getAllPaths(rootChildren);
 export const usePageLabel = () => {
   const { t } = useTranslation();
   const pageLabel: { path: (typeof allPaths)[number]; label: string }[] = [
+    { path: '/admin/models', label: 'Model catalog' },
+    { path: '/admin/limits', label: 'Usage limits' },
     { path: '/bot/my', label: t('bot.my.label.pageTitle') },
     { path: '/bot/discover', label: t('discover.pageTitle') },
     {

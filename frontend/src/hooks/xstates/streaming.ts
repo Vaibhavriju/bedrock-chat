@@ -10,7 +10,8 @@ export const StreamingState = {
   LEAVING: 'leaving',
 } as const;
 
-export type StreamingState = (typeof StreamingState)[keyof typeof StreamingState];
+export type StreamingState =
+  (typeof StreamingState)[keyof typeof StreamingState];
 
 export type StreamingContext = {
   /** ReasoningContent in assistant message itself. */
@@ -70,12 +71,10 @@ export const streamingStateMachine = setup({
     }),
     appendText: assign({
       text: ({ context, event }) =>
-        event.type === 'text'
-          ? context.text + event.text
-          : context.text,
+        event.type === 'text' ? context.text + event.text : context.text,
     }),
-    addTool: assign(
-      ({ context, event }) => produce(context, draft => {
+    addTool: assign(({ context, event }) =>
+      produce(context, (draft) => {
         if (event.type === 'tool-use') {
           // If reasoing is streamed before the tool arrives, let it be the tool's reasoning.
           const reasoning = draft.reasoning ? draft.reasoning : undefined;
@@ -107,34 +106,39 @@ export const streamingStateMachine = setup({
             });
           }
         }
-      }),
+      })
     ),
     updateToolResult: assign({
-      tools: ({ context, event }) => produce(context.tools, draft => {
-        if (event.type === 'tool-result') {
-          // Update status of the tool
-          const tool = draft.find(tool => event.toolUseId in tool.tools);
-          if (tool != null) {
-            tool.tools[event.toolUseId].status = event.status;
+      tools: ({ context, event }) =>
+        produce(context.tools, (draft) => {
+          if (event.type === 'tool-result') {
+            // Update status of the tool
+            const tool = draft.find((tool) => event.toolUseId in tool.tools);
+            if (tool != null) {
+              tool.tools[event.toolUseId].status = event.status;
+            }
           }
-        }
-      }),
+        }),
     }),
-    addRelatedDocument: assign(({ context, event }) => produce(context, draft => {
-      if (event.type === 'related-document') {
-        // Add related document of the tool
-        const tool = draft.tools.find(tool => event.toolUseId in tool.tools);
-        if (tool != null) {
-          const toolUse = tool.tools[event.toolUseId];
-          if (toolUse.relatedDocuments == null) {
-            toolUse.relatedDocuments = [event.relatedDocument];
-          } else {
-            toolUse.relatedDocuments.push(event.relatedDocument);
+    addRelatedDocument: assign(({ context, event }) =>
+      produce(context, (draft) => {
+        if (event.type === 'related-document') {
+          // Add related document of the tool
+          const tool = draft.tools.find(
+            (tool) => event.toolUseId in tool.tools
+          );
+          if (tool != null) {
+            const toolUse = tool.tools[event.toolUseId];
+            if (toolUse.relatedDocuments == null) {
+              toolUse.relatedDocuments = [event.relatedDocument];
+            } else {
+              toolUse.relatedDocuments.push(event.relatedDocument);
+            }
           }
+          draft.relatedDocuments.push(event.relatedDocument);
         }
-        draft.relatedDocuments.push(event.relatedDocument);
-      }
-    })),
+      })
+    ),
   },
 }).createMachine({
   context: {
@@ -180,6 +184,7 @@ export const streamingStateMachine = setup({
       },
     },
     leaving: {
+      on: { wakeup: { actions: 'reset', target: 'streaming' } },
       after: {
         2500: { target: 'sleeping' },
       },

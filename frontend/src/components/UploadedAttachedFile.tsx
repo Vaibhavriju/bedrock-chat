@@ -1,64 +1,12 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
+import { PiFileText } from 'react-icons/pi';
 import { BaseProps } from '../@types/common';
 import { twMerge } from 'tailwind-merge';
 
-type Props = BaseProps & {
-  fileName: string;
-  onClick?: () => void;
+type Props = BaseProps & {fileName: string; onClick?: () => void};
+const UploadedAttachedFile: React.FC<Props> = ({fileName, onClick, className}) => {
+  const content = <><span className="rounded-lg bg-aws-sea-blue-light/10 p-2 text-lg text-aws-sea-blue-light dark:text-aws-sea-blue-dark"><PiFileText aria-hidden="true" /></span><span className="min-w-0"><span className="block max-w-56 truncate text-sm font-medium">{fileName}</span><span className="mt-0.5 block text-xs opacity-60">{onClick ? 'Preview attachment' : 'Attached file'}</span></span></>;
+  const style = twMerge('my-1 inline-flex max-w-full items-center gap-3 rounded-xl border border-gray/20 bg-white px-3 py-2 text-left dark:bg-aws-ui-color-dark',className);
+  return onClick ? <button type="button" onClick={onClick} className={twMerge(style,'hover:border-aws-sea-blue-light/40')} aria-label={`Preview ${fileName}`} title={fileName}>{content}</button> : <div className={style} title={fileName}>{content}</div>;
 };
-
-const UploadedFileText: React.FC<Props> = (props) => {
-  const onClick = useCallback(() => {
-    if (props.onClick) {
-      props.onClick();
-    }
-  }, [props]);
-
-  const [shortFileName, setShortFileName] = useState('');
-
-  useEffect(() => {
-    const truncateFileName = (name: string | undefined, maxLength = 24) => {
-      if (name === undefined) {
-        return '';
-      }
-      if (name.length <= maxLength) {
-        return name;
-      }
-      const halfLength = Math.floor((maxLength - 3) / 2);
-      return `${name.slice(0, halfLength)}...${name.slice(-halfLength)}`;
-    };
-
-    const name = truncateFileName(props.fileName);
-
-    setShortFileName(name);
-  }, [props.fileName]);
-
-  return (
-    <div
-      className={twMerge(
-        'relative mx-2 flex flex-col items-center',
-        props.onClick ? 'cursor-pointer hover:brightness-75' : ''
-      )}
-      onClick={() => onClick()}>
-      <div className="flex w-full ">
-        <div className="w-full rounded-tl-lg border-l border-t border-gray bg-aws-paper-light dark:bg-aws-paper-dark "></div>
-        <svg
-          viewBox="0 0 16 16"
-          xmlns="http://www.w3.org/2000/svg"
-          className="block size-4 shrink-0 drop-shadow-sm">
-          <path
-            d="M0 0L16 16H0V0Z"
-            className="fill-aws-paper-light dark:fill-aws-paper-dark stroke-gray"
-            strokeWidth="0.5"></path>
-        </svg>
-      </div>
-      <div className="flex h-20 items-center justify-center rounded-b-lg border-x border-b border-gray bg-aws-paper-light dark:bg-aws-paper-dark p-2 ">
-        <div className="w-16 wrap-break-word text-center text-xs font-bold text-dark-gray dark:text-light-gray">
-          {shortFileName}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default UploadedFileText;
+export default UploadedAttachedFile;

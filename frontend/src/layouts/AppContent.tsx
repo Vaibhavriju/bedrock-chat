@@ -48,9 +48,9 @@ const AppContent: React.FC<Props> = (props) => {
   }, [theme]);
 
   const onClickNewChat = useCallback(() => {
+    newChat();
     navigate('/');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [navigate, newChat]);
 
   const [isOpenDeleteChat, setIsOpenDeleteChat] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<
@@ -89,7 +89,7 @@ const AppContent: React.FC<Props> = (props) => {
   const { drawerOptions, setDrawerOptions } = useDrawer();
 
   return (
-    <div className="relative flex h-dvh w-screen bg-aws-paper-light dark:bg-aws-paper-dark">
+    <div className="workspace relative flex h-dvh w-full overflow-hidden bg-aws-paper-light text-aws-font-color-light dark:bg-aws-paper-dark dark:text-aws-font-color-dark">
       <Drawer
         isAdmin={isAdmin}
         pinnedBots={pinnedBots}
@@ -146,17 +146,18 @@ const AppContent: React.FC<Props> = (props) => {
         onClose={() => setIsOpenDrawerOptions(false)}
       />
 
-      <main className="relative flex min-h-dvh flex-1 flex-col overflow-y-hidden transition-width">
-        <header className="visible flex h-12 w-full items-center bg-aws-squid-ink-light p-3 text-lg text-aws-font-color-white-light dark:bg-aws-squid-ink-dark dark:text-aws-font-color-white-dark lg:hidden lg:h-0">
+      <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-gray/20 bg-white px-3 lg:hidden dark:bg-aws-ui-color-dark">
           <button
-            className="mr-2 rounded-full p-2 hover:brightness-50 focus:outline-hidden focus:ring-1 focus:ring-blue-500/50 "
+            aria-label="Toggle sidebar"
+            className="mr-2 rounded-full p-2 hover:brightness-50 focus:ring-1 focus:ring-blue-500/50 focus:outline-hidden"
             onClick={() => {
               switchDrawer();
             }}>
             <PiList />
           </button>
 
-          <div className="flex-1 justify-center">
+          <div className="min-w-0 flex-1 truncate text-sm font-semibold">
             {isGeneratedTitle ? (
               <>
                 <LazyOutputText text={getTitle(conversationId ?? '')} />
@@ -170,14 +171,12 @@ const AppContent: React.FC<Props> = (props) => {
             )}
           </div>
 
-          <ButtonIcon onClick={onClickNewChat}>
+          <ButtonIcon label="New chat" onClick={onClickNewChat}>
             <PiPlus />
           </ButtonIcon>
         </header>
 
-        <div
-          className="h-full overflow-hidden overflow-y-auto  text-aws-font-color-light dark:text-aws-font-color-dark"
-          id="main">
+        <div className="min-h-0 flex-1 overflow-y-auto" id="main">
           <SnackbarProvider>
             <Outlet />
           </SnackbarProvider>

@@ -40,12 +40,12 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
       },
       manifest: {
-        name: 'Bedrock Chat',
-        short_name: 'Bedrock Chat',
-        description: 'AWS-native chatbot using Bedrock',
+        name: 'BatteryPool AI',
+        short_name: 'BatteryPool AI',
+        description: 'BatteryPool team AI workspace',
         start_url: '/index.html',
         display: 'standalone',
-        theme_color: '#232F3E',
+        theme_color: '#2563eb',
         icons: [
           {
             src: '/images/bedrock_icon_72.png',

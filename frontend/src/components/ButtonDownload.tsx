@@ -74,6 +74,7 @@ const ButtonDownload: React.FC<Props> = (props) => {
 
   return (
     <ButtonIcon
+      label="Download code"
       className={props.className}
       onClick={() => {
         downloadText(props.text);

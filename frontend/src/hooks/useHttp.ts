@@ -72,12 +72,14 @@ const useHttp = () => {
       url: string,
       params?: DATA,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      errorProcess?: (err: any) => void
+      errorProcess?: (err: any) => void,
+      signal?: AbortSignal
     ) => {
       return new Promise<AxiosResponse<RES>>((resolve, reject) => {
         api
           .get<RES, AxiosResponse<RES>, DATA>(url, {
             params,
+            signal,
           })
           .then((data) => {
             resolve(data);

@@ -143,7 +143,7 @@ class TestGetDefaultModel(unittest.TestCase):
         from app.usecases.global_config import get_default_model
 
         result = get_default_model()
-        self.assertEqual(result, "claude-v3.7-sonnet")
+        self.assertEqual(result, "claude-v4.6-sonnet")
 
     @patch.object(global_config, "DEFAULT_MODEL", "")
     def test_falls_back_to_default_when_empty_string(self):
@@ -151,7 +151,7 @@ class TestGetDefaultModel(unittest.TestCase):
         from app.usecases.global_config import get_default_model
 
         result = get_default_model()
-        self.assertEqual(result, "claude-v3.7-sonnet")
+        self.assertEqual(result, "claude-v4.6-sonnet")
 
     @patch.object(global_config, "DEFAULT_MODEL", "   ")
     def test_falls_back_to_default_when_whitespace(self):
@@ -159,7 +159,7 @@ class TestGetDefaultModel(unittest.TestCase):
         from app.usecases.global_config import get_default_model
 
         result = get_default_model()
-        self.assertEqual(result, "claude-v3.7-sonnet")
+        self.assertEqual(result, "claude-v4.6-sonnet")
 
     @patch.object(global_config, "DEFAULT_MODEL", "  amazon-nova-pro  ")
     def test_strips_whitespace_from_configured_model(self):

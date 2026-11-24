@@ -14,6 +14,8 @@ import useScroll from '../hooks/useScroll';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   PiArrowsCounterClockwise,
+  PiArrowDown,
+  PiExport,
   PiPenNib,
   PiWarningCircleFill,
 } from 'react-icons/pi';
@@ -53,6 +55,9 @@ import Skeleton from '../components/Skeleton.tsx';
 import { twMerge } from 'tailwind-merge';
 import ButtonStar from '../components/ButtonStar.tsx';
 import MenuBot from '../components/MenuBot.tsx';
+import ChatWelcome from '../components/ChatWelcome';
+import ConversationExportDialog from '../components/ConversationExportDialog';
+import UsageDialog from '../components/UsageDialog';
 
 // ChatMessageWithRelatedDocuments component moved outside to prevent re-creation on every render
 type ChatMessageWithRelatedDocumentsProps = {
@@ -68,83 +73,103 @@ type ChatMessageWithRelatedDocumentsProps = {
   onChangeMessageId?: (messageId: string) => void;
   onSubmit?: (messageId: string, content: string) => void;
   onSubmitFeedback?: (messageId: string, feedback: PutFeedbackRequest) => void;
+  onExportTurn?: () => void;
 };
 
-const ChatMessageWithRelatedDocuments: React.FC<ChatMessageWithRelatedDocumentsProps> = React.memo((props) => {
-  const { t } = useTranslation();
-  const { chatContent: message } = props;
+const ChatMessageWithRelatedDocuments: React.FC<ChatMessageWithRelatedDocumentsProps> =
+  React.memo((props) => {
+    const { t } = useTranslation();
+    const { chatContent: message } = props;
 
-  const isAgentThinking = useMemo(() => {
-    switch (props.streamingStateValue) {
-      case StreamingState.STREAMING:
-      case StreamingState.LEAVING:
-        return props.isStreaming;
-      default:
-        return false;
-    }
-  }, [props.streamingStateValue, props.isStreaming]);
-
-  const reasoning = useMemo(() => (
-    isAgentThinking ? props.streamingReasoning : ''
-  ), [isAgentThinking, props.streamingReasoning]);
-
-  const tools: AgentToolsProps[] | undefined = useMemo(() => {
-    if (isAgentThinking) {
-      if (props.streamingTools.length > 0) {
-        return props.streamingTools;
+    const isAgentThinking = useMemo(() => {
+      switch (props.streamingStateValue) {
+        case StreamingState.STREAMING:
+        case StreamingState.LEAVING:
+          return props.isStreaming;
+        default:
+          return false;
       }
+    }, [props.streamingStateValue, props.isStreaming]);
 
-      if (props.botHasAgent) {
-        return [{ thought: t('agent.progress.label'), tools: {} }];
-      }
+    const reasoning = useMemo(
+      () => (isAgentThinking ? props.streamingReasoning : ''),
+      [isAgentThinking, props.streamingReasoning]
+    );
 
-      if (props.botHasKnowledge) {
-        return [{ thought: t('bot.label.retrievingKnowledge'), tools: {} }];
-      }
-
-      return undefined;
-    } else {
-      if (props.botHasKnowledge) {
-        const pseudoToolUseId = message.id;
-        const relatedDocumentsOfVectorSearch = getRelatedDocumentsOfToolUse(
-          props.relatedDocuments,
-          pseudoToolUseId
-        );
-        if (relatedDocumentsOfVectorSearch != null && relatedDocumentsOfVectorSearch.length > 0) {
-          return [{
-            tools: {
-              [pseudoToolUseId]: {
-                name: 'knowledge_base_tool',
-                status: 'success',
-                input: {},
-                relatedDocuments: relatedDocumentsOfVectorSearch,
-              },
-            },
-          }];
+    const tools: AgentToolsProps[] | undefined = useMemo(() => {
+      if (isAgentThinking) {
+        if (props.streamingTools.length > 0) {
+          return props.streamingTools;
         }
+
+        if (props.botHasAgent) {
+          return [{ thought: t('agent.progress.label'), tools: {} }];
+        }
+
+        if (props.botHasKnowledge) {
+          return [{ thought: t('bot.label.retrievingKnowledge'), tools: {} }];
+        }
+
+        return undefined;
+      } else {
+        if (props.botHasKnowledge) {
+          const pseudoToolUseId = message.id;
+          const relatedDocumentsOfVectorSearch = getRelatedDocumentsOfToolUse(
+            props.relatedDocuments,
+            pseudoToolUseId
+          );
+          if (
+            relatedDocumentsOfVectorSearch != null &&
+            relatedDocumentsOfVectorSearch.length > 0
+          ) {
+            return [
+              {
+                tools: {
+                  [pseudoToolUseId]: {
+                    name: 'knowledge_base_tool',
+                    status: 'success',
+                    input: {},
+                    relatedDocuments: relatedDocumentsOfVectorSearch,
+                  },
+                },
+              },
+            ];
+          }
+        }
+        return undefined;
       }
-      return undefined;
-    }
-  }, [isAgentThinking, props.streamingTools, props.botHasAgent, props.botHasKnowledge, message.id, props.relatedDocuments, t]);
+    }, [
+      isAgentThinking,
+      props.streamingTools,
+      props.botHasAgent,
+      props.botHasKnowledge,
+      message.id,
+      props.relatedDocuments,
+      t,
+    ]);
 
-  const relatedDocumentsForCitation = useMemo(
-    () => isAgentThinking ? props.streamingRelatedDocuments : props.relatedDocuments,
-    [isAgentThinking, props.streamingRelatedDocuments, props.relatedDocuments]
-  );
+    const relatedDocumentsForCitation = useMemo(
+      () =>
+        isAgentThinking
+          ? props.streamingRelatedDocuments
+          : props.relatedDocuments,
+      [isAgentThinking, props.streamingRelatedDocuments, props.relatedDocuments]
+    );
 
-  return (
-    <ChatMessage
-      tools={tools}
-      reasoning={reasoning}
-      chatContent={message}
-      isStreaming={props.isStreaming}
-      relatedDocuments={relatedDocumentsForCitation}
-      onChangeMessageId={props.onChangeMessageId}
-      onSubmit={props.onSubmit}
-      onSubmitFeedback={props.onSubmitFeedback}
-    />
-  );
-});
+    return (
+      <ChatMessage
+        tools={tools}
+        reasoning={reasoning}
+        chatContent={message}
+        isStreaming={props.isStreaming}
+        relatedDocuments={relatedDocumentsForCitation}
+        onChangeMessageId={props.onChangeMessageId}
+        onSubmit={props.onSubmit}
+        onSubmitFeedback={props.onSubmitFeedback}
+        onExportTurn={props.onExportTurn}
+      />
+    );
+  });
 
 // Default model activation settings when no bot is selected
 const defaultActiveModels: ActiveModels = (() => {
@@ -159,12 +184,23 @@ const ChatPage: React.FC = () => {
   const { open: openSnackbar } = useSnackbar();
   const { errorDetail } = usePostMessageStreaming();
   const { isAdmin } = useLoginUser();
+  const {
+    disabledImageUpload,
+    availableModels,
+    modelId: activeModelId,
+    isLoadingModels,
+    modelConfigError,
+  } = useModel();
+  const [showUsage, setShowUsage] = useState(false);
   const { pinBot, unpinBot } = useBotPinning();
 
   const {
     streamingState,
     conversationError,
     postingMessage,
+    stopGeneration,
+    canStop,
+    stoppingMessage,
     newChat,
     postChat,
     messages,
@@ -202,10 +238,17 @@ const ChatPage: React.FC = () => {
 
   const { getBotId } = useConversation();
 
-  const { scrollToBottom, scrollToTop } = useScroll(conversationId);
-
   const { conversationId: paramConversationId, botId: paramBotId } =
     useParams();
+
+  const {
+    scrollToBottom,
+    scrollToTop,
+    viewportRef,
+    contentRef,
+    awayFromBottom,
+    jumpToBottom,
+  } = useScroll(paramConversationId ?? paramBotId ?? 'new');
 
   const botId = useMemo(() => {
     return paramBotId ?? getBotId(conversationId);
@@ -219,6 +262,10 @@ const ChatPage: React.FC = () => {
   } = useBotSummary(botId ?? undefined);
 
   const [pageTitle, setPageTitle] = useState('');
+  const [exportTarget, setExportTarget] = useState<{
+    messages: DisplayMessageContent[];
+    isTurn: boolean;
+  }>();
   const [isAvailabilityBot, setIsAvailabilityBot] = useState(false);
 
   useEffect(() => {
@@ -260,8 +307,11 @@ const ChatPage: React.FC = () => {
   }, [messages]);
 
   const disabledInput = useMemo(() => {
-    return botId !== null && !isAvailabilityBot && !isLoadingBot;
-  }, [botId, isAvailabilityBot, isLoadingBot]);
+    return (
+      availableModels.length === 0 ||
+      (botId !== null && !isAvailabilityBot && !isLoadingBot)
+    );
+  }, [availableModels.length, botId, isAvailabilityBot, isLoadingBot]);
 
   useEffect(() => {
     setConversationId(paramConversationId ?? '');
@@ -285,6 +335,7 @@ const ChatPage: React.FC = () => {
       base64EncodedImages?: string[],
       attachments?: AttachmentType[]
     ) => {
+      jumpToBottom();
       postChat({
         content,
         base64EncodedImages,
@@ -293,7 +344,7 @@ const ChatPage: React.FC = () => {
         enableReasoning,
       });
     },
-    [inputBotParams, postChat]
+    [inputBotParams, postChat, jumpToBottom]
   );
 
   const onChangeCurrentMessageId = useCallback(
@@ -325,17 +376,19 @@ const ChatPage: React.FC = () => {
 
   const onRegenerate = useCallback(
     (enableReasoning: boolean) => {
+      jumpToBottom();
       regenerate({
         bot: inputBotParams,
         enableReasoning,
       });
     },
-    [inputBotParams, regenerate]
+    [inputBotParams, regenerate, jumpToBottom]
   );
 
   const onContinueGenerate = useCallback(() => {
+    jumpToBottom();
     continueGenerate({ bot: inputBotParams });
-  }, [inputBotParams, continueGenerate]);
+  }, [inputBotParams, continueGenerate, jumpToBottom]);
 
   useLayoutEffect(() => {
     if (messages.length > 0) {
@@ -380,8 +433,11 @@ const ChatPage: React.FC = () => {
     navigate(`/bot/edit/${bot?.id}`);
   }, [bot?.id, navigate]);
 
-  const { disabledImageUpload } = useModel();
   const [dndMode, setDndMode] = useState(false);
+  const [suggestedPrompt, setSuggestedPrompt] = useState<{
+    text: string;
+    id: number;
+  }>();
   const onDragOver: React.DragEventHandler<HTMLDivElement> = useCallback(
     (e) => {
       if (!disabledImageUpload) {
@@ -415,6 +471,7 @@ const ChatPage: React.FC = () => {
 
       if (isNewConversationCommand) {
         event.preventDefault();
+        newChat();
 
         if (botId) {
           navigate(`/bot/${botId}`);
@@ -470,15 +527,15 @@ const ChatPage: React.FC = () => {
 
   return (
     <div
-      className="relative flex h-full flex-1 flex-col"
+      className="workspace-chat relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden"
       onDragOver={onDragOver}
       onDrop={endDnd}
       onDragEnd={endDnd}>
-      <div className="flex-1 overflow-hidden">
-        <div className="sticky top-0 z-10 mb-1.5 flex h-14 w-full items-center justify-between border-b border-gray bg-aws-paper-light p-2 dark:bg-aws-paper-dark">
-          <div className="flex w-full justify-between">
-            <div className="p-2">
-              <div className="mr-10 flex items-center whitespace-nowrap font-bold">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="workspace-chat-header relative z-10 flex min-h-14 shrink-0 flex-wrap items-center gap-2 border-b border-gray/15 px-3 py-2 sm:min-h-16 sm:px-6">
+          <div className="flex min-w-0 flex-1 items-center justify-between">
+            <div className="min-w-0 flex-1 p-2">
+              <div className="flex min-w-0 items-center font-bold">
                 {isLoadingBot ? (
                   <Skeleton className="h-5 w-32" />
                 ) : (
@@ -487,7 +544,9 @@ const ChatPage: React.FC = () => {
                       botSharedStatus={bot?.sharedStatus}
                       className="mr-1 text-aws-aqua"
                     />
-                    {pageTitle}
+                    <span className="truncate">
+                      {bot ? pageTitle : 'BatteryPool AI'}
+                    </span>
                   </>
                 )}
               </div>
@@ -502,8 +561,7 @@ const ChatPage: React.FC = () => {
             )}
 
             {isAvailabilityBot && !isLoadingBot && (
-              <div className="absolute -top-1 right-0 flex h-full items-center">
-                <div className="h-full w-12 bg-linear-to-r from-transparent to-aws-paper-light dark:to-aws-paper-dark"></div>
+              <div className="flex shrink-0 items-center">
                 <div className="flex items-center bg-aws-paper-light dark:bg-aws-paper-dark">
                   {bot?.owned && (
                     <StatusSyncBot
@@ -548,58 +606,76 @@ const ChatPage: React.FC = () => {
             )}
           </div>
           {getPostedModel() && (
-            <div className="absolute right-2 top-10 text-xs text-dark-gray dark:text-light-gray">
-              model: {getPostedModel()}
+            <div className="workspace-model-label ml-3 shrink-0 rounded-full bg-aws-sea-blue-light/5 px-3 py-1 text-xs text-dark-gray dark:text-light-gray">
+              {getPostedModel()
+                ?.replace('claude-v', 'Claude ')
+                .replace(/-/g, ' ')}
             </div>
           )}
+          <button
+            type="button"
+            className="ml-2 shrink-0 rounded-lg border border-gray/20 px-3 py-2 text-sm"
+            onClick={() => setShowUsage(true)}>
+            Your usage
+          </button>
+          {messages.length > 0 && (
+            <button
+              type="button"
+              aria-label="Export full conversation"
+              title="Copy or download the full conversation"
+              disabled={postingMessage}
+              className="ml-2 flex shrink-0 items-center gap-2 rounded-lg border border-gray/20 p-2 text-sm disabled:opacity-40"
+              onClick={() =>
+                setExportTarget({
+                  messages: structuredClone(messages),
+                  isTurn: false,
+                })
+              }>
+              <PiExport aria-hidden="true" />
+              <span className="hidden sm:inline">Export</span>
+            </button>
+          )}
         </div>
-        <section className="relative size-full flex-1 overflow-auto pb-9">
-          <div className="h-full">
-            <div
-              id="messages"
-              role="presentation"
-              className="flex h-full flex-col overflow-auto pb-16">
+        <section className="relative min-h-0 flex-1">
+          <div
+            id="messages"
+            ref={viewportRef}
+            role="region"
+            aria-label="Conversation"
+            tabIndex={0}
+            className="workspace-messages h-full min-h-0 overflow-x-hidden overflow-y-auto overscroll-contain">
+            <div ref={contentRef} className="flex min-h-full flex-col pb-4">
               {messages?.length === 0 ? (
-                <div className="relative mb-[45vh]  flex w-full flex-col items-center justify-center">
+                <div className="workspace-welcome-container m-auto flex w-full max-w-4xl shrink-0 flex-col items-center px-5 py-6 sm:py-8">
                   {!loadingConversation && (
-                    <SwitchBedrockModel
-                      className="mb-6 mt-3 w-min"
-                      activeModels={activeModels}
-                      botId={botId}
-                    />
+                    <>
+                      <ChatWelcome
+                        title={bot ? pageTitle : undefined}
+                        description={description}
+                        onChoosePrompt={(text) => {
+                          setSuggestedPrompt({ text, id: Date.now() });
+                          focusInputRef.current?.focus();
+                        }}
+                      />
+                      <SwitchBedrockModel
+                        className="mt-6"
+                        activeModels={activeModels}
+                        botId={botId}
+                      />
+                    </>
                   )}
-                  <div className="px-20 text-center">
-                    <div className="text-lg font-bold">
-                      {isLoadingBot && botId && (
-                        <Skeleton className="h-5 w-32" />
-                      )}
-                      {!isLoadingBot && bot && (
-                        <div className="flex items-baseline justify-center">
-                          <IconPinnedBot
-                            botSharedStatus={bot?.sharedStatus}
-                            className="mr-1 shrink-0 text-aws-aqua"
-                          />
-                          <div>{pageTitle}</div>
-                        </div>
-                      )}
-                    </div>
-                    <div className="mt-3 text-xs text-dark-gray dark:text-light-gray">
-                      {isLoadingBot ? (
-                        <Skeleton className="mt-1 h-3 w-64" />
-                      ) : (
-                        description
-                      )}
-                    </div>
-                  </div>
+                  {loadingConversation && (
+                    <Skeleton className="h-32 w-full max-w-lg" />
+                  )}
                 </div>
               ) : (
                 <>
                   {messages?.map((message, idx, array) => (
                     <div
                       key={message.id}
-                      className={`${
+                      className={`shrink-0 ${
                         message.role === 'assistant'
-                          ? 'bg-aws-squid-ink-light/5 dark:bg-aws-squid-ink-dark/35'
+                          ? 'workspace-assistant-turn'
                           : ''
                       }`}>
                       <ChatMessageWithRelatedDocuments
@@ -607,33 +683,46 @@ const ChatPage: React.FC = () => {
                         isStreaming={postingMessage && idx + 1 === array.length}
                         streamingReasoning={streamingState.context.reasoning}
                         streamingTools={streamingState.context.tools}
-                        streamingRelatedDocuments={streamingState.context.relatedDocuments}
+                        streamingRelatedDocuments={
+                          streamingState.context.relatedDocuments
+                        }
                         streamingStateValue={streamingState.value as string}
                         botHasAgent={bot?.hasAgent ?? false}
                         botHasKnowledge={bot?.hasKnowledge ?? false}
                         relatedDocuments={relatedDocuments ?? []}
                         onChangeMessageId={onChangeCurrentMessageId}
                         onSubmit={onSubmitEditedContent}
+                        onExportTurn={() => {
+                          const userMessage = array
+                            .slice(0, idx)
+                            .reverse()
+                            .find((m) => m.role === 'user');
+                          setExportTarget({
+                            messages: structuredClone(
+                              userMessage ? [userMessage, message] : [message]
+                            ),
+                            isTurn: true,
+                          });
+                        }}
                         onSubmitFeedback={(messageId, feedback) => {
                           if (conversationId) {
                             giveFeedback(messageId, feedback);
                           }
                         }}
                       />
-                      <div className="w-full border-b border-aws-squid-ink-light/10 dark:border-aws-squid-ink-dark/10"></div>
                     </div>
                   ))}
                 </>
               )}
               {hasError && (
-                <div className="mb-12 mt-2 flex flex-col items-center">
+                <div className="mt-2 mb-12 flex flex-col items-center">
                   <div className="flex items-center font-bold text-red">
                     <PiWarningCircleFill className="mr-1 text-2xl" />
                     {errorDetail ?? t('error.answerResponse')}
                   </div>
 
                   <Button
-                    className="mt-2 shadow-sm "
+                    className="mt-2 shadow-sm"
                     icon={<PiArrowsCounterClockwise />}
                     outlined
                     onClick={() => {
@@ -648,13 +737,24 @@ const ChatPage: React.FC = () => {
               )}
             </div>
           </div>
+          {awayFromBottom && messages.length > 0 && (
+            <button
+              type="button"
+              className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-gray/30 bg-white px-4 py-2 text-sm shadow-md dark:bg-aws-ui-color-dark"
+              onClick={() => {
+                jumpToBottom();
+                viewportRef.current?.focus({ preventScroll: true });
+              }}>
+              <PiArrowDown aria-hidden="true" />
+              Jump to latest
+            </button>
+          )}
         </section>
       </div>
 
       <div
         className={twMerge(
-          'bottom-0 z-0 flex w-full flex-col items-center justify-center',
-          messages.length === 0 ? 'absolute top-2/3 -translate-y-1/2' : ''
+          'workspace-composer-area z-10 flex max-h-[60dvh] shrink-0 flex-col items-center overflow-y-auto px-3 pt-2 pb-3 sm:px-6 sm:pb-4'
         )}>
         {bot && bot.syncStatus !== SyncStatus.SUCCEEDED && (
           <div className="mb-8 w-1/2">
@@ -666,11 +766,12 @@ const ChatPage: React.FC = () => {
           </div>
         )}
         {messages.length === 0 && (
-          <div className="mb-3 flex w-11/12 flex-wrap-reverse justify-start gap-2 md:w-10/12 lg:w-4/6 xl:w-3/6">
+          <div className="mb-3 flex w-full max-w-4xl flex-wrap gap-2">
             {bot?.conversationQuickStarters?.map((qs, idx) => (
-              <div
+              <button
                 key={idx}
-                className="w-[calc(33.333%-0.5rem)] cursor-pointer rounded-2xl border border-aws-squid-ink-light/20 bg-white p-2 text-sm  text-dark-gray hover:shadow-lg hover:shadow-gray  dark:border-aws-squid-ink-dark/20 dark:text-light-gray"
+                type="button"
+                className="min-w-0 flex-1 rounded-xl border border-gray/20 bg-white p-2 text-left text-sm text-dark-gray hover:bg-aws-sea-blue-light/5 dark:bg-aws-ui-color-dark dark:text-light-gray"
                 onClick={() => {
                   onSend(qs.example, reasoningEnabled);
                 }}>
@@ -678,26 +779,42 @@ const ChatPage: React.FC = () => {
                   <PiPenNib />
                 </div>
                 {qs.title}
-              </div>
+              </button>
             ))}
           </div>
         )}
 
+        {availableModels.length === 0 && (
+          <p role="status" className="mb-2 px-4 text-sm">
+            {isLoadingModels
+              ? 'Loading available models…'
+              : modelConfigError
+                ? 'Could not load available models. Refresh the page to retry.'
+                : 'No models are currently available for your employee account. Contact your workspace administrator.'}
+          </p>
+        )}
         <InputChatContent
-          className="mb-7 w-11/12 md:w-10/12 lg:w-4/6 xl:w-3/6"
+          className="w-full max-w-4xl"
+          suggestedPrompt={suggestedPrompt}
           dndMode={dndMode}
-          disabledSend={postingMessage || hasError || isLastAssistantMessageEmpty}
-          disabledRegenerate={postingMessage || hasError}
-          disabledContinue={postingMessage || hasError}
+          disabledSend={
+            postingMessage || hasError || isLastAssistantMessageEmpty
+          }
+          disabledRegenerate={postingMessage || hasError || disabledInput}
+          disabledContinue={postingMessage || hasError || disabledInput}
           disabled={disabledInput}
           placeholder={
-            disabledInput
-              ? t('bot.label.notAvailableBotInputMessage')
-              : undefined
+            availableModels.length === 0
+              ? 'No models are available for your account.'
+              : disabledInput
+                ? t('bot.label.notAvailableBotInputMessage')
+                : undefined
           }
           canRegenerate={messages.length > 1}
           canContinue={getShouldContinue()}
           isLoading={postingMessage}
+          onStop={canStop ? stopGeneration : undefined}
+          stopping={stoppingMessage}
           isNewChat={messages.length == 0}
           onSend={onSend}
           onRegenerate={onRegenerate}
@@ -709,6 +826,20 @@ const ChatPage: React.FC = () => {
         />
       </div>
       <BottomHelper />
+      {showUsage && (
+        <UsageDialog
+          model={getPostedModel() || activeModelId}
+          onClose={() => setShowUsage(false)}
+        />
+      )}
+      {exportTarget && (
+        <ConversationExportDialog
+          isOpen
+          messages={exportTarget.messages}
+          isTurn={exportTarget.isTurn}
+          onClose={() => setExportTarget(undefined)}
+        />
+      )}
     </div>
   );
 };

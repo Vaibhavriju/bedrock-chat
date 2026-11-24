@@ -26,6 +26,7 @@ export type AttachmentContent = {
   contentType: 'attachment';
   fileName?: string;
   body: string;
+  objectKey?: string;
 };
 
 export type ReasoningContent = {
@@ -88,6 +89,7 @@ export type SimpleMessage = {
 };
 
 export type MessageContent = {
+  stopped?: boolean;
   role: Role;
   content: Content[];
   model: Model;
